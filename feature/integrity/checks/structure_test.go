@@ -1,4 +1,4 @@
-package integrity
+package checks
 
 import (
 	"context"
@@ -12,6 +12,9 @@ import (
 )
 
 // MockClient is a mock implementation of storage.Client
+// Duplicated here to avoid cycle if imported from somewhere that imports checks?
+// Or maybe we can move MockClient to storage package or a test package.
+// For now, duplicate it.
 type MockClient struct {
 	mock.Mock
 }
@@ -33,26 +36,20 @@ func (m *MockClient) PutObject(ctx context.Context, bucketName, objectName strin
 
 func (m *MockClient) ListObjects(ctx context.Context, bucketName string, opts minio.ListObjectsOptions) <-chan minio.ObjectInfo {
 	args := m.Called(ctx, bucketName, opts)
-	// For simplicity, return a channel that can be fed by the test setup, or nil/closed one.
-	// We can use a type assertion to return what mock returns.
 	if ch, ok := args.Get(0).(<-chan minio.ObjectInfo); ok {
 		return ch
 	}
-	// Fallback to empty closed channel if mock returns nil
 	ch := make(chan minio.ObjectInfo)
 	close(ch)
 	return ch
 }
 
 func TestCheckStructure(t *testing.T) {
-	logger := zap.NewNop()
-
 	t.Run("Bucket Missing", func(t *testing.T) {
 		mockClient := new(MockClient)
 		mockClient.On("BucketExists", mock.Anything, "assets").Return(false, nil)
 
-		svc := NewService(mockClient, "assets", logger)
-		_, err := svc.CheckStructure(context.Background())
+		_, err := CheckStructure(context.Background(), mockClient, "assets")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "does not exist")
 	})
@@ -60,13 +57,11 @@ func TestCheckStructure(t *testing.T) {
 	t.Run("All Missing", func(t *testing.T) {
 		mockClient := new(MockClient)
 		mockClient.On("BucketExists", mock.Anything, "assets").Return(true, nil)
-		// ListObjects returns empty channel
 		ch := make(chan minio.ObjectInfo)
 		close(ch)
 		mockClient.On("ListObjects", mock.Anything, "assets", mock.Anything).Return((<-chan minio.ObjectInfo)(ch))
 
-		svc := NewService(mockClient, "assets", logger)
-		missing, err := svc.CheckStructure(context.Background())
+		missing, err := CheckStructure(context.Background(), mockClient, "assets")
 		assert.NoError(t, err)
 		assert.Len(t, missing, len(RequiredFolders))
 	})
@@ -74,23 +69,17 @@ func TestCheckStructure(t *testing.T) {
 	t.Run("All Present", func(t *testing.T) {
 		mockClient := new(MockClient)
 		mockClient.On("BucketExists", mock.Anything, "assets").Return(true, nil)
-		
-		// Map logic: ListObjects called for each folder. Return channel with 1 item.
-		// Mock needs to handle multiple calls with different inputs? ListObjects args contain Prefix.
-		// Since testify mock arg matching is strict, we can setup matching for each folder.
-		
+
 		for _, folder := range RequiredFolders {
 			ch := make(chan minio.ObjectInfo, 1)
 			ch <- minio.ObjectInfo{Key: folder + "/"}
 			close(ch)
-			// Match opts with Prefix
 			mockClient.On("ListObjects", mock.Anything, "assets", mock.MatchedBy(func(opts minio.ListObjectsOptions) bool {
-				return opts.Prefix == folder + "/"
+				return opts.Prefix == folder+"/"
 			})).Return((<-chan minio.ObjectInfo)(ch))
 		}
 
-		svc := NewService(mockClient, "assets", logger)
-		missing, err := svc.CheckStructure(context.Background())
+		missing, err := CheckStructure(context.Background(), mockClient, "assets")
 		assert.NoError(t, err)
 		assert.Len(t, missing, 0)
 	})
@@ -100,12 +89,9 @@ func TestFixStructure(t *testing.T) {
 	logger := zap.NewNop()
 	mockClient := new(MockClient)
 
-	// Fix validation
-	// PutObject should be called for each missing folder
 	mockClient.On("PutObject", mock.Anything, "assets", mock.Anything, mock.Anything, int64(0), mock.Anything).Return(minio.UploadInfo{}, nil)
 
-	svc := NewService(mockClient, "assets", logger)
-	err := svc.FixStructure(context.Background(), []string{"bundled"})
+	err := FixStructure(context.Background(), mockClient, "assets", logger, []string{"bundled"})
 	assert.NoError(t, err)
 	mockClient.AssertNumberOfCalls(t, "PutObject", 1)
 }

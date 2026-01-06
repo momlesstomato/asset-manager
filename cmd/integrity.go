@@ -39,7 +39,7 @@ func init() {
 	RootCmd.AddCommand(integrityCmd)
 	integrityCmd.AddCommand(structureCmd)
 
-	integrityCmd.PersistentFlags().BoolVar(&fixFlag, "fix", false, "Fix missing folders")
+	structureCmd.Flags().BoolVar(&fixFlag, "fix", false, "Fix missing folders")
 }
 
 func runIntegrityChecks(ctx context.Context, onlyStructure bool) {
@@ -50,10 +50,7 @@ func runIntegrityChecks(ctx context.Context, onlyStructure bool) {
 		os.Exit(1)
 	}
 
-	// 2. Initialize Logger (Console format for CLI usually better, but respect config)
-	// Override format to console for CLI if nice output desired?
-	// User said "integrity structure will check it and log warning".
-	// Let's use configured logger.
+	// 2. Initialize Logger
 	logg, err := logger.New(&cfg.Log)
 	if err != nil {
 		fmt.Printf("Failed to create logger: %v\n", err)
@@ -70,29 +67,42 @@ func runIntegrityChecks(ctx context.Context, onlyStructure bool) {
 	svc := integrity.NewService(store, cfg.Storage.Bucket, logg)
 
 	// Run Checks
-	// Currently only Structure check is implemented.
 
-	if onlyStructure || true { // "integrity" triggers all, currently all = structure
-		logg.Info("Checking folder structure...")
-		missing, err := svc.CheckStructure(ctx)
+	// 1. Structure Check
+	logg.Info("Checking folder structure...")
+	missingStructure, err := svc.CheckStructure(ctx)
+	if err != nil {
+		logg.Fatal("Structure check failed", zap.Error(err))
+	}
+
+	if len(missingStructure) == 0 {
+		logg.Info("Structure is intact.")
+	} else {
+		logg.Warn("Missing folders detected", zap.Strings("missing", missingStructure))
+
+		if onlyStructure && fixFlag {
+			logg.Info("Fixing missing folders...")
+			if err := svc.FixStructure(ctx, missingStructure); err != nil {
+				logg.Fatal("Failed to fix structure", zap.Error(err))
+			}
+			logg.Info("Structure fixed successfully.")
+		} else if onlyStructure {
+			logg.Info("Run with --fix to create missing folders.")
+		}
+	}
+
+	// 2. GameData Check (Only if running full integrity check)
+	if !onlyStructure {
+		logg.Info("Checking gamedata files...")
+		missingGameData, err := svc.CheckGameData(ctx)
 		if err != nil {
-			logg.Fatal("Structure check failed", zap.Error(err))
+			logg.Fatal("GameData check failed", zap.Error(err))
 		}
 
-		if len(missing) == 0 {
-			logg.Info("Structure is intact.")
+		if len(missingGameData) == 0 {
+			logg.Info("GameData files are present.")
 		} else {
-			logg.Warn("Missing folders detected", zap.Strings("missing", missing))
-
-			if fixFlag {
-				logg.Info("Fixing missing folders...")
-				if err := svc.FixStructure(ctx, missing); err != nil {
-					logg.Fatal("Failed to fix structure", zap.Error(err))
-				}
-				logg.Info("Structure fixed successfully.")
-			} else {
-				logg.Info("Run with --fix to create missing folders.")
-			}
+			logg.Warn("Missing gamedata files detected", zap.Strings("missing", missingGameData))
 		}
 	}
 }
