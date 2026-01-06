@@ -130,7 +130,7 @@ This document details the structure of `FurniData`, which serves as the definiti
 
 **Usage:**
 - **Primary Function:** Used extensively in **Catalog Search** features.
-- **Search Filtering:** The file `src/components/catalog/views/page/common/CatalogSearchView.tsx` uses it to group or find furniture items when searching.
+- **Search Filtering:** The file `CatalogSearchView.tsx` uses it to group or find furniture items when searching.
 - **Builders Club:** Acts as a grouping identifier to organize items in Builders Club pages so that items from the same product line (e.g., "kitchen", "scifi") appear together.
 
 ## 5. Field Details: SpecialType
