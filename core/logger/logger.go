@@ -12,7 +12,7 @@ func New(cfg *Config) (*zap.Logger, error) {
 	var err error
 
 	var config zap.Config
-	
+
 	if cfg.Level == "debug" {
 		config = zap.NewDevelopmentConfig()
 	} else {
@@ -23,6 +23,7 @@ func New(cfg *Config) (*zap.Logger, error) {
 	if cfg.Format == "console" {
 		config.Encoding = "console"
 		config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		config.DisableStacktrace = true
 	} else {
 		config.Encoding = "json"
 	}
@@ -30,7 +31,7 @@ func New(cfg *Config) (*zap.Logger, error) {
 	config.EncoderConfig.LevelKey = "level"
 	config.EncoderConfig.TimeKey = "time"
 	config.EncoderConfig.MessageKey = "message"
-	
+
 	logger, err = config.Build()
 	if err != nil {
 		return nil, err

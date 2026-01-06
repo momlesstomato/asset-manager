@@ -22,10 +22,7 @@ var integrityCmd = &cobra.Command{
 	Short: "Perform integrity checks on the asset storage",
 	Long:  `Checks if the storage bucket has the required folder structure and other integrity requirements.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Default behavior: Run all checks
-		runIntegrityChecks(cmd.Context(), false) // All checks, no specific fix implied unless subcommand used? 
-		// Actually user said "integrity Will trigger al integrity checks".
-		// And "integrity structure" is a subcommand.
+		runIntegrityChecks(cmd.Context(), false)
 	},
 }
 
@@ -54,7 +51,7 @@ func runIntegrityChecks(ctx context.Context, onlyStructure bool) {
 	}
 
 	// 2. Initialize Logger (Console format for CLI usually better, but respect config)
-	// Override format to console for CLI if nice output desired? 
+	// Override format to console for CLI if nice output desired?
 	// User said "integrity structure will check it and log warning".
 	// Let's use configured logger.
 	logg, err := logger.New(&cfg.Log)
@@ -74,7 +71,7 @@ func runIntegrityChecks(ctx context.Context, onlyStructure bool) {
 
 	// Run Checks
 	// Currently only Structure check is implemented.
-	
+
 	if onlyStructure || true { // "integrity" triggers all, currently all = structure
 		logg.Info("Checking folder structure...")
 		missing, err := svc.CheckStructure(ctx)
@@ -86,7 +83,7 @@ func runIntegrityChecks(ctx context.Context, onlyStructure bool) {
 			logg.Info("Structure is intact.")
 		} else {
 			logg.Warn("Missing folders detected", zap.Strings("missing", missing))
-			
+
 			if fixFlag {
 				logg.Info("Fixing missing folders...")
 				if err := svc.FixStructure(ctx, missing); err != nil {

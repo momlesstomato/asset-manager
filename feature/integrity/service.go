@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"asset-manager/core/storage"
+
 	"github.com/minio/minio-go/v7"
 	"go.uber.org/zap"
 )
@@ -57,21 +58,21 @@ func (s *Service) CheckStructure(ctx context.Context) ([]string, error) {
 		// Use ListObjects with prefix and maxKeys 1 to see if anything exists?
 		// Or try to StatObject? My storage.Client interface only has ListObjects from my previous write.
 		// Let's use ListObjects.
-		
+
 		opts := minio.ListObjectsOptions{
 			Prefix:    folderPath,
 			Recursive: false,
 			MaxKeys:   1,
 		}
-		
+
 		// If we find the folder entry itself or content inside it, we consider it present?
 		// User said: "If not present, create it". This implies we want the folder placeholder.
 		// But if there are files inside "images/foo.png", "images/" exists conceptually.
 		// However, standard "Create Folder" in S3 creates a 0-byte object.
 		// Let's check if there is ANY object with that prefix.
-		
+
 		found := false
-		for _ = range s.client.ListObjects(ctx, s.bucket, opts) {
+		for range s.client.ListObjects(ctx, s.bucket, opts) {
 			found = true
 			break // found at least one thing
 		}
