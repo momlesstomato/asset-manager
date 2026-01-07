@@ -30,7 +30,7 @@ This table defines the base properties of furniture items. It serves as the serv
 | `interaction_modes_count` | `int` | `1` | **No Direct Relation** | Loaded into `Item.stateCount`. Interaction cycles: `(currentState + 1) % interaction_modes_count`. If 0 or 1, item typically does not change state. |
 | `vending_ids` | `varchar(255)` | `0` | **No Relation** | Comma-separated list of Item IDs (hand items) that this vending machine gives out. |
 | `multiheight` | `varchar(50)` | `0` | **No Relation** | Loaded into `Item.multiHeights` as double array. Semicolon-separated doubles (e.g. `1.0;1.1`). Logic: `Height = multiHeights[current_state % multiHeights.length]`. |
-| `customparams` | `varchar(25600)` | `NULL` | `customparams` | Loaded into `Item.customParams`. Sent to client for: Badges (type='b'), Robots (type='r'), Posters (item_name='poster'), Music Discs (item_name starts with 'SONG '). |
+| `customparams` | `varchar(25600)` | `NULL` | `customparams` | Loaded into `Item.customParams`. Sent to client for: Badges (`type`='b'), Robots (`type`='r'), Posters (`item_name`='poster'), Music Discs (`item_name` starts with 'SONG '). |
 | `effect_id_male` | `int` | `0` | **No Relation** | The effect ID applied to a male avatar when using/wearing this item (if applicable). |
 | `effect_id_female` | `int` | `0` | **No Relation** | The effect ID applied to a female avatar when using/wearing this item (if applicable). |
 | `clothing_on_walk` | `varchar(255)` | `NULL` | **No Relation** | Specifies clothing UUID/IDs to apply when walking into this item (e.g., changing booths). |
