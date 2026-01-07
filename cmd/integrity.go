@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"asset-manager/core/config"
+	"asset-manager/core/database"
 	"asset-manager/core/logger"
 	"asset-manager/core/storage"
 	"asset-manager/feature/integrity"
@@ -96,6 +97,13 @@ func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGame
 	store, err := storage.NewClient(cfg.Storage)
 	if err != nil {
 		logg.Fatal("Failed to create storage client", zap.Error(err))
+	}
+
+	// Connect to Database (Optional)
+	if _, err := database.Connect(cfg.Database); err != nil {
+		logg.Warn("Optional database connection failed", zap.Error(err))
+	} else {
+		logg = logg.With(zap.String("server", cfg.Server.Emulator))
 	}
 
 	svc := integrity.NewService(store, cfg.Storage.Bucket, logg)

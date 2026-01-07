@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 
+	"asset-manager/core/database"
 	"asset-manager/core/logger"
 	"asset-manager/core/server"
 	"asset-manager/core/storage"
@@ -21,6 +22,8 @@ type Config struct {
 	Storage storage.Config `mapstructure:"storage"`
 	// Log holds configuration for the logger.
 	Log logger.Config `mapstructure:"log"`
+	// Database holds configuration for the database connection.
+	Database database.Config `mapstructure:"database"`
 }
 
 // LoadConfig loads configuration from environment variables and .env file.
@@ -31,7 +34,7 @@ func LoadConfig(path string) (*Config, error) {
 	if path == "." {
 		envPath = ".env"
 	}
-	
+
 	// Ignore error if file doesn't exist (e.g. production)
 	_ = godotenv.Overload(envPath)
 
@@ -65,7 +68,7 @@ func bindValues(v *viper.Viper, iface interface{}, prefix string) {
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		tag := field.Tag.Get("mapstructure")
-		
+
 		// Skip if no tag
 		if tag == "" {
 			continue

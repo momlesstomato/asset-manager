@@ -1,18 +1,18 @@
 package cmd
 
 import (
-
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"asset-manager/core/config"
+	"asset-manager/core/database"
 	"asset-manager/core/loader"
 	"asset-manager/core/logger"
-	"asset-manager/core/storage"
 	"asset-manager/core/middleware/auth"
 	"asset-manager/core/middleware/rayid"
+	"asset-manager/core/storage"
 	"asset-manager/feature/integrity"
 
 	"github.com/gofiber/fiber/v2"
@@ -40,6 +40,16 @@ var startCmd = &cobra.Command{
 		defer logg.Sync()
 		zap.ReplaceGlobals(logg)
 
+		// 3. Connect to Database (Optional)
+		// We use the emulator name as the "server" field.
+		if _, err := database.Connect(cfg.Database); err != nil {
+			logg.Warn("Optional database connection failed", zap.Error(err))
+		} else {
+			// If succeeded, inject "server" field into logger
+			logg = logg.With(zap.String("server", cfg.Server.Emulator))
+			logg.Info("Connected to emulator database")
+		}
+
 		// 3. Initialize Fiber App
 		app := fiber.New(fiber.Config{
 			DisableStartupMessage: true, // We will log our own startup message
@@ -53,21 +63,21 @@ var startCmd = &cobra.Command{
 
 		// 4. Initialize Feature Loader
 		mgr := loader.NewManager()
-		
+
 		// Register Features
 		mgr.Register(integrity.NewFeature(store, cfg.Storage.Bucket, logg))
 
 		// Middleware Registration
 		// 1. RayID (Must be first to trace everything)
 		app.Use(rayid.New())
-		
+
 		// 2. Logging Middleware (Custom to use Zap + RayID)
 		app.Use(func(c *fiber.Ctx) error {
 			// Attach logger to locals? or just log request here?
 			// Let's log the incoming request
 			l := logger.WithRayID(logg, c)
-			l.Info("Request started", 
-				zap.String("method", c.Method()), 
+			l.Info("Request started",
+				zap.String("method", c.Method()),
 				zap.String("path", c.Path()),
 				zap.String("ip", c.IP()),
 			)
