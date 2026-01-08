@@ -18,6 +18,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // startCmd represents the start command
@@ -42,9 +43,11 @@ var startCmd = &cobra.Command{
 
 		// 3. Connect to Database (Optional)
 		// We use the emulator name as the "server" field.
-		if _, err := database.Connect(cfg.Database); err != nil {
+		var db *gorm.DB
+		if conn, err := database.Connect(cfg.Database); err != nil {
 			logg.Warn("Optional database connection failed", zap.Error(err))
 		} else {
+			db = conn
 			// If succeeded, inject "server" field into logger
 			logg = logg.With(zap.String("server", cfg.Server.Emulator))
 			logg.Info("Connected to emulator database")
@@ -65,7 +68,7 @@ var startCmd = &cobra.Command{
 		mgr := loader.NewManager()
 
 		// Register Features
-		mgr.Register(integrity.NewFeature(store, cfg.Storage.Bucket, logg))
+		mgr.Register(integrity.NewFeature(store, cfg.Storage.Bucket, logg, db))
 
 		// Middleware Registration
 		// 1. RayID (Must be first to trace everything)

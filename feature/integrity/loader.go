@@ -2,8 +2,10 @@ package integrity
 
 import (
 	"asset-manager/core/storage"
+
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // Feature implements the loader.Feature interface.
@@ -13,8 +15,8 @@ type Feature struct {
 }
 
 // NewFeature creates a new Integrity feature.
-func NewFeature(client storage.Client, bucket string, logger *zap.Logger) *Feature {
-	svc := NewService(client, bucket, logger)
+func NewFeature(client storage.Client, bucket string, logger *zap.Logger, db *gorm.DB) *Feature {
+	svc := NewService(client, bucket, logger, db)
 	h := NewHandler(svc)
 	return &Feature{service: svc, handler: h}
 }

@@ -17,7 +17,7 @@ import (
 func TestService_Structure(t *testing.T) {
 	mockClient := new(mocks.Client)
 	logger := zap.NewNop()
-	svc := NewService(mockClient, "test-bucket", logger)
+	svc := NewService(mockClient, "test-bucket", logger, nil)
 
 	t.Run("CheckStructure", func(t *testing.T) {
 		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
@@ -43,7 +43,7 @@ func TestService_Structure(t *testing.T) {
 func TestService_GameData(t *testing.T) {
 	mockClient := new(mocks.Client)
 	logger := zap.NewNop()
-	svc := NewService(mockClient, "test-bucket", logger)
+	svc := NewService(mockClient, "test-bucket", logger, nil)
 
 	mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
 	ch := make(chan minio.ObjectInfo)
@@ -58,7 +58,7 @@ func TestService_GameData(t *testing.T) {
 func TestService_Bundled(t *testing.T) {
 	mockClient := new(mocks.Client)
 	logger := zap.NewNop()
-	svc := NewService(mockClient, "test-bucket", logger)
+	svc := NewService(mockClient, "test-bucket", logger, nil)
 
 	t.Run("CheckBundled", func(t *testing.T) {
 		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
@@ -81,7 +81,7 @@ func TestService_Bundled(t *testing.T) {
 func TestService_Furniture(t *testing.T) {
 	mockClient := new(mocks.Client)
 	logger := zap.NewNop()
-	svc := NewService(mockClient, "test-bucket", logger)
+	svc := NewService(mockClient, "test-bucket", logger, nil)
 
 	// Mock furniture integrity check dependency
 	// Since furniture.CheckIntegrity uses the client, we mock the client behaviour for furniture check.

@@ -10,6 +10,7 @@ import (
 	"asset-manager/feature/furniture/models"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // Service handles integrity checks.
@@ -17,14 +18,16 @@ type Service struct {
 	client storage.Client
 	bucket string
 	logger *zap.Logger
+	db     *gorm.DB
 }
 
 // NewService creates a new integrity service.
-func NewService(client storage.Client, bucket string, logger *zap.Logger) *Service {
+func NewService(client storage.Client, bucket string, logger *zap.Logger, db *gorm.DB) *Service {
 	return &Service{
 		client: client,
 		bucket: bucket,
 		logger: logger,
+		db:     db,
 	}
 }
 
@@ -56,4 +59,12 @@ func (s *Service) FixBundled(ctx context.Context, missing []string) error {
 // CheckFurniture performs an integrity check on furniture assets.
 func (s *Service) CheckFurniture(ctx context.Context) (*models.Report, error) {
 	return furniture.CheckIntegrity(ctx, s.client, s.bucket)
+}
+
+// CheckServer performs an integrity check on the emulator database schema.
+func (s *Service) CheckServer(emulator string) (*checks.ServerReport, error) {
+	if s.db == nil {
+		return nil, nil // Or specific error? "Database not connected"
+	}
+	return checks.CheckServerIntegrity(s.db, emulator)
 }

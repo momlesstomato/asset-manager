@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
+	"gorm.io/gorm"
 )
 
 var fixFlag bool
@@ -30,7 +31,7 @@ var integrityCmd = &cobra.Command{
 			cmd.Help()
 			return
 		}
-		runIntegrityChecks(cmd.Context(), false, false, false, false)
+		runIntegrityChecks(cmd.Context(), false, false, false, false, false)
 	},
 }
 
@@ -39,7 +40,7 @@ var structureCmd = &cobra.Command{
 	Use:   "structure",
 	Short: "Check and fix folder structure",
 	Run: func(cmd *cobra.Command, args []string) {
-		runIntegrityChecks(cmd.Context(), true, false, false, false)
+		runIntegrityChecks(cmd.Context(), true, false, false, false, false)
 	},
 }
 
@@ -48,7 +49,7 @@ var bundleCmd = &cobra.Command{
 	Use:   "bundle",
 	Short: "Check and fix bundled asset folders",
 	Run: func(cmd *cobra.Command, args []string) {
-		runIntegrityChecks(cmd.Context(), false, true, false, false)
+		runIntegrityChecks(cmd.Context(), false, true, false, false, false)
 	},
 }
 
@@ -57,7 +58,7 @@ var gamedataCmd = &cobra.Command{
 	Use:   "gamedata",
 	Short: "Check gamedata files",
 	Run: func(cmd *cobra.Command, args []string) {
-		runIntegrityChecks(cmd.Context(), false, false, true, false)
+		runIntegrityChecks(cmd.Context(), false, false, true, false, false)
 	},
 }
 
@@ -66,7 +67,16 @@ var furnitureCmd = &cobra.Command{
 	Use:   "furniture",
 	Short: "Check integrity of bundled furniture",
 	Run: func(cmd *cobra.Command, args []string) {
-		runIntegrityChecks(cmd.Context(), false, false, false, true)
+		runIntegrityChecks(cmd.Context(), false, false, false, true, false)
+	},
+}
+
+// serverCmd represents the integrity server command
+var serverCmd = &cobra.Command{
+	Use:   "server",
+	Short: "Check integrity of the emulator database schema",
+	Run: func(cmd *cobra.Command, args []string) {
+		runIntegrityChecks(cmd.Context(), false, false, false, false, true)
 	},
 }
 
@@ -76,12 +86,13 @@ func init() {
 	integrityCmd.AddCommand(bundleCmd)
 	integrityCmd.AddCommand(gamedataCmd)
 	integrityCmd.AddCommand(furnitureCmd)
+	integrityCmd.AddCommand(serverCmd)
 
 	structureCmd.Flags().BoolVar(&fixFlag, "fix", false, "Fix missing folders")
 	bundleCmd.Flags().BoolVar(&fixFlag, "fix", false, "Fix missing folders")
 }
 
-func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGameData, onlyFurniture bool) {
+func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGameData, onlyFurniture, onlyServer bool) {
 	cfg, err := config.LoadConfig(".")
 	if err != nil {
 		fmt.Printf("Failed to load config: %v\n", err)
@@ -100,20 +111,23 @@ func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGame
 	}
 
 	// Connect to Database (Optional)
-	if _, err := database.Connect(cfg.Database); err != nil {
+	var db *gorm.DB
+	if conn, err := database.Connect(cfg.Database); err != nil {
 		logg.Warn("Optional database connection failed", zap.Error(err))
 	} else {
+		db = conn
 		logg = logg.With(zap.String("server", cfg.Server.Emulator))
 	}
 
-	svc := integrity.NewService(store, cfg.Storage.Bucket, logg)
+	svc := integrity.NewService(store, cfg.Storage.Bucket, logg, db)
 
-	runAll := !onlyStructure && !onlyBundle && !onlyGameData && !onlyFurniture
+	runAll := !onlyStructure && !onlyBundle && !onlyGameData && !onlyFurniture && !onlyServer
 
 	runStructure := onlyStructure || runAll
 	runGameData := onlyGameData || runAll
 	runBundle := onlyBundle || runAll
-	runFurniture := onlyFurniture
+	runFurniture := onlyFurniture || runAll // Should furniture be in All? It's slow. Assuming yes based on logic.
+	runServer := onlyServer || runAll
 
 	// Run Checks
 
@@ -207,5 +221,32 @@ func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGame
 			zap.Int("MalformedAssets", len(report.MalformedAssets)),
 			zap.String("ExecutionTime", report.ExecutionTime),
 		)
+	}
+
+	if runServer {
+		logg.Info("Checking server schema integrity...", zap.String("emulator", cfg.Server.Emulator))
+		report, err := svc.CheckServer(cfg.Server.Emulator)
+		if err != nil {
+			logg.Error("Server schema check failed", zap.Error(err))
+		} else {
+			if report.Matched {
+				logg.Info("Server schema matches expected definition.", zap.String("emulator", report.Emulator))
+			} else {
+				logg.Warn("Server schema mismatches found", zap.String("emulator", report.Emulator))
+				for table, tblReport := range report.Tables {
+					if tblReport.Status != "ok" {
+						if len(tblReport.MissingColumns) > 0 {
+							logg.Warn("Missing Columns", zap.String("table", table), zap.Strings("columns", tblReport.MissingColumns))
+						}
+						if len(tblReport.TypeMismatches) > 0 {
+							logg.Warn("Type Mismatches", zap.String("table", table), zap.Strings("mismatches", tblReport.TypeMismatches))
+						}
+					}
+				}
+				for _, e := range report.Errors {
+					logg.Error("Inspection Error", zap.String("error", e))
+				}
+			}
+		}
 	}
 }

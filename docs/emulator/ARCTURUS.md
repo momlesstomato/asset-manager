@@ -35,7 +35,7 @@ This table defines the base properties of furniture items. It serves as the serv
 | `effect_id_female` | `int` | `0` | **No Relation** | The effect ID applied to a female avatar when using/wearing this item (if applicable). |
 | `clothing_on_walk` | `varchar(255)` | `NULL` | **No Relation** | Specifies clothing UUID/IDs to apply when walking into this item (e.g., changing booths). |
 | `page_id` | `varchar(250)` | `NULL` | **No Relation** | Not read by emulator/Item object. Legacy field for catalog linking, but Arcturus uses `catalog_items`. |
-| `rare` | `enum` | `0` | **No Relation** | Not read by emulator/Item object. Legacy field. No effect on server-side logic (trading, rarities, etc). |
+| `rare` | `enum` | `0` | **No Relation** | **Legacy Field**. Not read by emulator/Item object. Can have values '0'-'4' (speculated frontend relation), but emulator logic only uses 0/1. No effect on server-side logic (trading, rarities, etc). |
 
 ## Notes
 

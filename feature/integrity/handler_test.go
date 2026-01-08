@@ -19,7 +19,7 @@ import (
 func setupHandler() (*Handler, *mocks.Client) {
 	mockClient := new(mocks.Client)
 	logger := zap.NewNop()
-	svc := NewService(mockClient, "test-bucket", logger)
+	svc := NewService(mockClient, "test-bucket", logger, nil)
 	return NewHandler(svc), mockClient
 }
 
