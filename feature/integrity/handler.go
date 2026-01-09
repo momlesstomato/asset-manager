@@ -23,6 +23,9 @@ func (h *Handler) RegisterRoutes(app fiber.Router) {
 	group.Get("/", h.HandleIntegrityCheck)
 	group.Get("/structure", h.HandleStructureCheck)
 	group.Get("/furniture", h.HandleFurnitureCheck)
+
+	// Separate furniture detail view
+	app.Get("/furniture/:identifier", h.HandleGetFurnitureDetail)
 }
 
 // HandleIntegrityCheck triggers all integrity checks.
@@ -90,7 +93,8 @@ func (h *Handler) HandleFurnitureCheck(c *fiber.Ctx) error {
 	l := logger.WithRayID(h.service.logger, c)
 	l.Info("Starting furniture integrity check")
 
-	report, err := h.service.CheckFurniture(c.Context())
+	checkDB := c.Query("db") == "true"
+	report, err := h.service.CheckFurniture(c.Context(), checkDB)
 	if err != nil {
 		l.Error("Furniture check failed", zap.Error(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -101,6 +105,22 @@ func (h *Handler) HandleFurnitureCheck(c *fiber.Ctx) error {
 	l.Info("Furniture check completed",
 		zap.Int("expected", report.TotalExpected),
 		zap.Int("found", report.TotalFound))
+
+	return c.JSON(report)
+}
+
+// HandleGetFurnitureDetail returns a detailed report for a single furniture item.
+func (h *Handler) HandleGetFurnitureDetail(c *fiber.Ctx) error {
+	identifier := c.Params("identifier")
+	l := logger.WithRayID(h.service.logger, c)
+
+	report, err := h.service.GetFurnitureDetail(c.Context(), identifier)
+	if err != nil {
+		l.Error("Furniture detail check failed", zap.Error(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
 
 	return c.JSON(report)
 }

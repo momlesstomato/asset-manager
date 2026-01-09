@@ -68,7 +68,7 @@ var startCmd = &cobra.Command{
 		mgr := loader.NewManager()
 
 		// Register Features
-		mgr.Register(integrity.NewFeature(store, cfg.Storage.Bucket, logg, db))
+		mgr.Register(integrity.NewFeature(store, cfg.Storage.Bucket, logg, db, cfg.Server.Emulator))
 
 		// Middleware Registration
 		// 1. RayID (Must be first to trace everything)

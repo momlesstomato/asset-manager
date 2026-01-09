@@ -6,13 +6,27 @@ import (
 
 // Report contains the results of a furniture integrity check.
 type Report struct {
-	TotalExpected      int      `json:"total_expected"`
-	TotalFound         int      `json:"total_found"`
-	MissingAssets      []string `json:"missing_assets"`
-	UnregisteredAssets []string `json:"unregistered_assets"`
-	MalformedAssets    []string `json:"malformed_assets"`
-	GeneratedAt        string   `json:"generated_at"`
-	ExecutionTime      string   `json:"execution_time"`
+	TotalExpected       int      `json:"total_expected"`
+	TotalFound          int      `json:"total_found"`
+	MissingAssets       []string `json:"missing_assets"`
+	UnregisteredAssets  []string `json:"unregistered_assets"`
+	MalformedAssets     []string `json:"malformed_assets"`
+	ParameterMismatches []string `json:"parameter_mismatches,omitempty"`
+	GeneratedAt         string   `json:"generated_at"`
+	ExecutionTime       string   `json:"execution_time"`
+}
+
+// FurnitureDetailReport contains the detailed integrity check for a single item.
+type FurnitureDetailReport struct {
+	ID              int      `json:"id"`
+	ClassName       string   `json:"class_name"`
+	Name            string   `json:"name"`
+	NitroFile       string   `json:"nitro_file,omitempty"`
+	FileExists      bool     `json:"file_exists"`
+	InFurniData     bool     `json:"in_furnidata"`
+	InDB            bool     `json:"in_db"`
+	IntegrityStatus string   `json:"integrity_status"` // "PASS", "FAIL", "WARNING"
+	Mismatches      []string `json:"mismatches,omitempty"`
 }
 
 // FurnitureData represents the structure of FurniData.json

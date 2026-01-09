@@ -76,7 +76,7 @@ func TestCheckIntegrity(t *testing.T) {
 
 		mockClient.On("ListObjects", mock.Anything, "assets", mock.Anything).Return(emptyCh())
 
-		report, err := CheckIntegrity(context.Background(), mockClient, "assets")
+		report, err := CheckIntegrity(context.Background(), mockClient, "assets", nil, "")
 		assert.NoError(t, err)
 		assert.IsType(t, &models.Report{}, report)
 		assert.Equal(t, 4, report.TotalExpected)
@@ -123,7 +123,7 @@ func TestCheckIntegrity(t *testing.T) {
 
 		mockClient.On("ListObjects", mock.Anything, "assets", mock.Anything).Return(emptyCh())
 
-		report, err := CheckIntegrity(context.Background(), mockClient, "assets")
+		report, err := CheckIntegrity(context.Background(), mockClient, "assets", nil, "")
 		assert.NoError(t, err)
 		assert.Equal(t, 4, report.TotalExpected)
 		assert.Equal(t, 3, report.TotalFound)
@@ -155,7 +155,7 @@ func TestCheckIntegrity(t *testing.T) {
 		close(channel)
 		mockClient.On("ListObjects", mock.Anything, "assets", mock.Anything).Return((<-chan minio.ObjectInfo)(channel))
 
-		report, err := CheckIntegrity(context.Background(), mockClient, "assets")
+		report, err := CheckIntegrity(context.Background(), mockClient, "assets", nil, "")
 		assert.NoError(t, err)
 		// chair missing name -> malformed
 		// broken missing name & ID=0 -> malformed
@@ -167,7 +167,7 @@ func TestCheckIntegrity(t *testing.T) {
 		mockClient := new(mocks.Client)
 		mockClient.On("BucketExists", mock.Anything, "assets").Return(false, nil)
 
-		report, err := CheckIntegrity(context.Background(), mockClient, "assets")
+		report, err := CheckIntegrity(context.Background(), mockClient, "assets", nil, "")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "bucket assets not found")
 		assert.Nil(t, report)
@@ -177,7 +177,7 @@ func TestCheckIntegrity(t *testing.T) {
 		mockClient := new(mocks.Client)
 		mockClient.On("BucketExists", mock.Anything, "assets").Return(false, errors.New("connection failed"))
 
-		report, err := CheckIntegrity(context.Background(), mockClient, "assets")
+		report, err := CheckIntegrity(context.Background(), mockClient, "assets", nil, "")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "connection failed")
 		assert.Nil(t, report)
@@ -189,7 +189,7 @@ func TestCheckIntegrity(t *testing.T) {
 		mockClient.On("GetObject", mock.Anything, "assets", "gamedata/FurnitureData.json", mock.Anything).
 			Return(nil, errors.New("read failed"))
 
-		report, err := CheckIntegrity(context.Background(), mockClient, "assets")
+		report, err := CheckIntegrity(context.Background(), mockClient, "assets", nil, "")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "read failed")
 		assert.Nil(t, report)
@@ -203,7 +203,7 @@ func TestCheckIntegrity(t *testing.T) {
 		mockClient.On("GetObject", mock.Anything, "assets", "gamedata/FurnitureData.json", mock.Anything).
 			Return(io.NopCloser(bytes.NewReader([]byte(invalidJSON))), nil)
 
-		report, err := CheckIntegrity(context.Background(), mockClient, "assets")
+		report, err := CheckIntegrity(context.Background(), mockClient, "assets", nil, "")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to parse FurnitureData.json")
 		assert.Nil(t, report)
@@ -229,7 +229,7 @@ func TestCheckIntegrity(t *testing.T) {
 
 		mockClient.On("ListObjects", mock.Anything, "assets", mock.Anything).Return(errCh())
 
-		report, err := CheckIntegrity(context.Background(), mockClient, "assets")
+		report, err := CheckIntegrity(context.Background(), mockClient, "assets", nil, "")
 		assert.Error(t, err)
 		if err != nil {
 			assert.Contains(t, err.Error(), "list failed")

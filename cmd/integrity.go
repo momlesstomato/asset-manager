@@ -20,6 +20,7 @@ import (
 )
 
 var fixFlag bool
+var dbFlag bool
 
 // integrityCmd represents the integrity command
 var integrityCmd = &cobra.Command{
@@ -90,6 +91,7 @@ func init() {
 
 	structureCmd.Flags().BoolVar(&fixFlag, "fix", false, "Fix missing folders")
 	bundleCmd.Flags().BoolVar(&fixFlag, "fix", false, "Fix missing folders")
+	furnitureCmd.Flags().BoolVar(&dbFlag, "db", false, "Check database integrity")
 }
 
 func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGameData, onlyFurniture, onlyServer bool) {
@@ -119,7 +121,7 @@ func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGame
 		logg = logg.With(zap.String("server", cfg.Server.Emulator))
 	}
 
-	svc := integrity.NewService(store, cfg.Storage.Bucket, logg, db)
+	svc := integrity.NewService(store, cfg.Storage.Bucket, logg, db, cfg.Server.Emulator)
 
 	runAll := !onlyStructure && !onlyBundle && !onlyGameData && !onlyFurniture && !onlyServer
 
@@ -199,7 +201,7 @@ func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGame
 		}
 
 		logg.Info("Checking furniture assets (this might take a while)...")
-		report, err := svc.CheckFurniture(ctx)
+		report, err := svc.CheckFurniture(ctx, dbFlag)
 		if err != nil {
 			logg.Fatal("Furniture check failed", zap.Error(err))
 		}
@@ -219,13 +221,14 @@ func runIntegrityChecks(ctx context.Context, onlyStructure, onlyBundle, onlyGame
 			zap.Int("MissingAssets", len(report.MissingAssets)),
 			zap.Int("UnregisteredAssets", len(report.UnregisteredAssets)),
 			zap.Int("MalformedAssets", len(report.MalformedAssets)),
+			zap.Int("ParameterMismatches", len(report.ParameterMismatches)),
 			zap.String("ExecutionTime", report.ExecutionTime),
 		)
 	}
 
 	if runServer {
 		logg.Info("Checking server schema integrity...", zap.String("emulator", cfg.Server.Emulator))
-		report, err := svc.CheckServer(cfg.Server.Emulator)
+		report, err := svc.CheckServer()
 		if err != nil {
 			logg.Error("Server schema check failed", zap.Error(err))
 		} else {
