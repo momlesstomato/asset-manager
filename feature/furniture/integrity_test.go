@@ -75,7 +75,8 @@ func TestCheckIntegrity(t *testing.T) {
 		})).Return((<-chan minio.ObjectInfo)(chP))
 
 		mockClient.On("ListObjects", mock.Anything, "assets", mock.Anything).Return(emptyCh())
-		assert.Empty(t, report.MissingAssets)
+
+		report, err := CheckIntegrity(context.Background(), mockClient, "assets", nil, "")
 		assert.NoError(t, err)
 		assert.IsType(t, &models.Report{}, report)
 		assert.Equal(t, 4, report.TotalExpected)
