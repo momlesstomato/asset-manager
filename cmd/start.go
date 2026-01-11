@@ -104,6 +104,9 @@ var startCmd = &cobra.Command{
 			return err
 		})
 
+		// 2.5 Swagger Documentation (Public)
+		app.Get("/swagger/*", swagger.HandlerDefault)
+
 		// 3. Auth (Protect API)
 		// We protect everything for now as requested ("protect every request")
 		app.Use(auth.New(auth.Config{ApiKey: cfg.Server.ApiKey}))
@@ -112,9 +115,6 @@ var startCmd = &cobra.Command{
 		if err := mgr.LoadAll(app); err != nil {
 			logg.Fatal("Failed to load features", zap.Error(err))
 		}
-
-		// 6. Swagger Documentation
-		app.Get("/swagger/*", swagger.HandlerDefault)
 
 		// 7. Start Server
 		go func() {
