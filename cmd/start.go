@@ -13,13 +13,24 @@ import (
 	"asset-manager/core/middleware/auth"
 	"asset-manager/core/middleware/rayid"
 	"asset-manager/core/storage"
+
+	"asset-manager/feature/furniture"
 	"asset-manager/feature/integrity"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/swagger"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+
+	_ "asset-manager/docs/swagger"
 )
+
+// @title Asset Manager API
+// @version 1.0
+// @description API for managing Habbo assets.
+// @host localhost:8080
+// @BasePath /
 
 // startCmd represents the start command
 var startCmd = &cobra.Command{
@@ -69,6 +80,7 @@ var startCmd = &cobra.Command{
 
 		// Register Features
 		mgr.Register(integrity.NewFeature(store, cfg.Storage.Bucket, logg, db, cfg.Server.Emulator))
+		mgr.Register(furniture.NewFeature(store, cfg.Storage.Bucket, logg, db, cfg.Server.Emulator))
 
 		// Middleware Registration
 		// 1. RayID (Must be first to trace everything)
@@ -101,7 +113,10 @@ var startCmd = &cobra.Command{
 			logg.Fatal("Failed to load features", zap.Error(err))
 		}
 
-		// 6. Start Server
+		// 6. Swagger Documentation
+		app.Get("/swagger/*", swagger.HandlerDefault)
+
+		// 7. Start Server
 		go func() {
 			logg.Info("Starting server", zap.String("port", cfg.Server.Port))
 			if err := app.Listen(":" + cfg.Server.Port); err != nil {

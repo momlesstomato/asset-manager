@@ -9,7 +9,7 @@ import (
 	"asset-manager/core/database"
 	"asset-manager/core/logger"
 	"asset-manager/core/storage"
-	"asset-manager/feature/integrity"
+	"asset-manager/feature/furniture"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -58,7 +58,7 @@ func runFurnitureDetailCheck(ctx context.Context, identifier string) {
 		logg = logg.With(zap.String("server", cfg.Server.Emulator))
 	}
 
-	svc := integrity.NewService(store, cfg.Storage.Bucket, logg, db, cfg.Server.Emulator)
+	svc := furniture.NewService(store, cfg.Storage.Bucket, logg, db, cfg.Server.Emulator)
 
 	logg.Info("Checking furniture item...", zap.String("identifier", identifier))
 	report, err := svc.GetFurnitureDetail(ctx, identifier)

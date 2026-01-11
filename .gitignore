@@ -35,4 +35,6 @@ logs
 playground/*
 asset-manager
 asset-manager.exe
-*.json
+
+# Swagger
+docs/swagger

@@ -74,8 +74,3 @@ func (s *Service) CheckServer() (*checks.ServerReport, error) {
 	}
 	return checks.CheckServerIntegrity(s.db, s.emulator)
 }
-
-// GetFurnitureDetail returns detailed integrity info for a single furniture item.
-func (s *Service) GetFurnitureDetail(ctx context.Context, identifier string) (*models.FurnitureDetailReport, error) {
-	return furniture.CheckFurnitureItem(ctx, s.client, s.bucket, s.db, s.emulator, identifier)
-}
