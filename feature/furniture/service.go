@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"asset-manager/core/storage"
+	"asset-manager/feature/furniture/integrity"
 	"asset-manager/feature/furniture/models"
 
 	"go.uber.org/zap"
@@ -32,5 +33,5 @@ func NewService(client storage.Client, bucket string, logger *zap.Logger, db *go
 
 // GetFurnitureDetail returns detailed integrity info for a single furniture item.
 func (s *Service) GetFurnitureDetail(ctx context.Context, identifier string) (*models.FurnitureDetailReport, error) {
-	return CheckFurnitureItem(ctx, s.client, s.bucket, s.db, s.emulator, identifier)
+	return integrity.CheckFurnitureItem(ctx, s.client, s.bucket, s.db, s.emulator, identifier)
 }

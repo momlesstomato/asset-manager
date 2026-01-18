@@ -4,10 +4,9 @@ import (
 	"context"
 
 	"asset-manager/core/storage"
-	"asset-manager/feature/integrity/checks"
-
-	"asset-manager/feature/furniture"
+	furnitureIntegrity "asset-manager/feature/furniture/integrity"
 	"asset-manager/feature/furniture/models"
+	"asset-manager/feature/integrity/checks"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -64,7 +63,7 @@ func (s *Service) CheckFurniture(ctx context.Context, checkDB bool) (*models.Rep
 	if checkDB {
 		db = s.db
 	}
-	return furniture.CheckIntegrity(ctx, s.client, s.bucket, db, s.emulator)
+	return furnitureIntegrity.CheckIntegrity(ctx, s.client, s.bucket, db, s.emulator)
 }
 
 // CheckServer performs an integrity check on the emulator database schema.

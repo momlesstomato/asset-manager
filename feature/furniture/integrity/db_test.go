@@ -1,4 +1,4 @@
-package furniture
+package integrity
 
 import (
 	"context"
@@ -81,8 +81,9 @@ func TestCheckIntegrityWithDB_Mismatch(t *testing.T) {
 	mismatches, err := CheckIntegrityWithDB(context.Background(), furniData, db, "arcturus")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, mismatches)
-	assert.Contains(t, mismatches[0], "name mismatch")
-	assert.Contains(t, mismatches[1], "width mismatch")
+	// New format uses "name: gd='x' db='y'" instead of "name mismatch"
+	assert.Contains(t, mismatches[0], "name:")
+	assert.Contains(t, mismatches[1], "width:")
 }
 
 func TestCheckIntegrityWithDB_Comet(t *testing.T) {
