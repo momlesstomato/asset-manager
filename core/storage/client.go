@@ -22,10 +22,6 @@ type Client interface {
 	GetObject(ctx context.Context, bucketName, objectName string, opts minio.GetObjectOptions) (io.ReadCloser, error)
 	// ListObjects lists objects in a bucket.
 	ListObjects(ctx context.Context, bucketName string, opts minio.ListObjectsOptions) <-chan minio.ObjectInfo
-	// RemoveObject removes an object from storage.
-	RemoveObject(ctx context.Context, bucketName, objectName string, opts minio.RemoveObjectOptions) error
-	// RemoveObjects removes multiple objects from storage.
-	RemoveObjects(ctx context.Context, bucketName string, objectsCh <-chan minio.ObjectInfo, opts minio.RemoveObjectsOptions) <-chan minio.RemoveObjectError
 }
 
 // NewClient creates a new Minio client based on the configuration.
@@ -51,12 +47,4 @@ type minioClientWrapper struct {
 
 func (c *minioClientWrapper) GetObject(ctx context.Context, bucketName, objectName string, opts minio.GetObjectOptions) (io.ReadCloser, error) {
 	return c.Client.GetObject(ctx, bucketName, objectName, opts)
-}
-
-func (c *minioClientWrapper) RemoveObject(ctx context.Context, bucketName, objectName string, opts minio.RemoveObjectOptions) error {
-	return c.Client.RemoveObject(ctx, bucketName, objectName, opts)
-}
-
-func (c *minioClientWrapper) RemoveObjects(ctx context.Context, bucketName string, objectsCh <-chan minio.ObjectInfo, opts minio.RemoveObjectsOptions) <-chan minio.RemoveObjectError {
-	return c.Client.RemoveObjects(ctx, bucketName, objectsCh, opts)
 }

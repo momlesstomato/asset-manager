@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"gorm.io/driver/mysql"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -25,24 +24,17 @@ func Connect(cfg Config) (*gorm.DB, error) {
 	// Create user:password string with encoding if needed.
 	// But wait, url.UserPassword("u", "p").String() returns u:p encoded.
 
-	var dialector gorm.Dialector
+	userInfo := url.UserPassword(cfg.User, cfg.Password).String()
 
-	if cfg.Driver == "sqlite" {
-		dialector = sqlite.Open(cfg.Name) // Use Name as DSN for sqlite (e.g. ":memory:" or file path)
-	} else {
-		// Default to MySQL
-		userInfo := url.UserPassword(cfg.User, cfg.Password).String()
-		dsn := fmt.Sprintf("%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-			userInfo, cfg.Host, cfg.Port, cfg.Name)
-		dialector = mysql.Open(dsn)
-	}
+	dsn := fmt.Sprintf("%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		userInfo, cfg.Host, cfg.Port, cfg.Name)
 
 	// Suppress GORM logging for cleaner optional warnings in main logger
 	gormConfig := &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	}
 
-	db, err := gorm.Open(dialector, gormConfig)
+	db, err := gorm.Open(mysql.Open(dsn), gormConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}

@@ -3,7 +3,6 @@ package integrity
 import (
 	"asset-manager/core/logger"
 	"asset-manager/feature/integrity/checks"
-	"sync"
 
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
@@ -30,10 +29,6 @@ func (h *Handler) RegisterRoutes(app fiber.Router) {
 	group.Get("/gamedata", h.HandleGameDataCheck)
 	group.Get("/furniture", h.HandleFurnitureCheck)
 	group.Get("/server", h.HandleServerCheck)
-
-	// Sync routes
-	syncGroup := app.Group("/sync")
-	syncGroup.Post("/furniture", h.HandleFurnitureSync)
 }
 
 // HandleIntegrityCheck triggers all integrity checks.
@@ -45,71 +40,48 @@ func (h *Handler) RegisterRoutes(app fiber.Router) {
 // @Success 200 {object} map[string]interface{} "Combined Report"
 // @Failure 500 {object} map[string]string "Internal Server Error"
 // @Router /integrity [get]
-// HandleIntegrityCheck triggers all integrity checks concurrently for faster execution.
-// It aggregates the results from each check into a combined report.
 func (h *Handler) HandleIntegrityCheck(c *fiber.Ctx) error {
 	l := logger.WithRayID(h.service.logger, c)
-	l.Info("Triggering all integrity checks concurrently")
+	l.Info("Triggering all integrity checks")
 
 	ctx := c.Context()
-	type result struct {
-		key  string
-		data interface{}
-	}
-	results := make(chan result, 5)
-	var wg sync.WaitGroup
-	wg.Add(5)
-	// Structure
-	go func() {
-		defer wg.Done()
-		if missing, err := h.service.CheckStructure(ctx); err != nil {
-			results <- result{"structure", map[string]interface{}{"status": "error", "error": err.Error()}}
-		} else {
-			results <- result{"structure", map[string]interface{}{"status": "ok", "missing": missing}}
-		}
-	}()
-	// Bundled
-	go func() {
-		defer wg.Done()
-		if missing, err := h.service.CheckBundled(ctx); err != nil {
-			results <- result{"bundled", map[string]interface{}{"status": "error", "error": err.Error()}}
-		} else {
-			results <- result{"bundled", map[string]interface{}{"status": "ok", "missing": missing}}
-		}
-	}()
-	// GameData
-	go func() {
-		defer wg.Done()
-		if missing, err := h.service.CheckGameData(ctx); err != nil {
-			results <- result{"gamedata", map[string]interface{}{"status": "error", "error": err.Error()}}
-		} else {
-			results <- result{"gamedata", map[string]interface{}{"status": "ok", "missing": missing}}
-		}
-	}()
-	// Server
-	go func() {
-		defer wg.Done()
-		if srvReport, err := h.service.CheckServer(); err != nil {
-			results <- result{"server", map[string]interface{}{"status": "error", "error": err.Error()}}
-		} else {
-			results <- result{"server", srvReport}
-		}
-	}()
-	// Furniture (requires DB)
-	go func() {
-		defer wg.Done()
-		if furnReport, err := h.service.CheckFurniture(ctx); err != nil {
-			results <- result{"furniture", map[string]interface{}{"status": "error", "error": err.Error()}}
-		} else {
-			results <- result{"furniture", furnReport}
-		}
-	}()
-	wg.Wait()
-	close(results)
 	report := make(map[string]interface{})
-	for r := range results {
-		report[r.key] = r.data
+
+	// Structure
+	if missing, err := h.service.CheckStructure(ctx); err != nil {
+		report["structure"] = map[string]interface{}{"status": "error", "error": err.Error()}
+	} else {
+		report["structure"] = map[string]interface{}{"status": "ok", "missing": missing}
 	}
+
+	// Bundled
+	if missing, err := h.service.CheckBundled(ctx); err != nil {
+		report["bundled"] = map[string]interface{}{"status": "error", "error": err.Error()}
+	} else {
+		report["bundled"] = map[string]interface{}{"status": "ok", "missing": missing}
+	}
+
+	// GameData
+	if missing, err := h.service.CheckGameData(ctx); err != nil {
+		report["gamedata"] = map[string]interface{}{"status": "error", "error": err.Error()}
+	} else {
+		report["gamedata"] = map[string]interface{}{"status": "ok", "missing": missing}
+	}
+
+	// Server
+	if srvReport, err := h.service.CheckServer(); err != nil {
+		report["server"] = map[string]interface{}{"status": "error", "error": err.Error()}
+	} else {
+		report["server"] = srvReport
+	}
+
+	// Furniture (Slow)
+	if furnReport, err := h.service.CheckFurniture(ctx, false); err != nil {
+		report["furniture"] = map[string]interface{}{"status": "error", "error": err.Error()}
+	} else {
+		report["furniture"] = furnReport
+	}
+
 	return c.JSON(report)
 }
 
@@ -229,10 +201,11 @@ func (h *Handler) HandleGameDataCheck(c *fiber.Ctx) error {
 
 // HandleFurnitureCheck checks integrity of bundled furniture assets.
 // @Summary Check Furniture Assets
-// @Description Perform deep integrity check on furniture assets across FurniData, Storage, and Database
+// @Description Perform deep integrity check on furniture assets in storage.
 // @Tags integrity
 // @Accept json
 // @Produce json
+// @Param db query boolean false "Check Database Integrity too"
 // @Success 200 {object} map[string]interface{} "Furniture Report"
 // @Failure 500 {object} map[string]string "Internal Server Error"
 // @Router /integrity/furniture [get]
@@ -240,7 +213,8 @@ func (h *Handler) HandleFurnitureCheck(c *fiber.Ctx) error {
 	l := logger.WithRayID(h.service.logger, c)
 	l.Info("Starting furniture integrity check")
 
-	report, err := h.service.CheckFurniture(c.Context())
+	checkDB := c.Query("db") == "true"
+	report, err := h.service.CheckFurniture(c.Context(), checkDB)
 	if err != nil {
 		l.Error("Furniture check failed", zap.Error(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -249,8 +223,8 @@ func (h *Handler) HandleFurnitureCheck(c *fiber.Ctx) error {
 	}
 
 	l.Info("Furniture check completed",
-		zap.Int("total_assets", report.TotalAssets),
-		zap.Int("storage_missing", report.StorageMissing))
+		zap.Int("expected", report.TotalExpected),
+		zap.Int("found", report.TotalFound))
 
 	return c.JSON(report)
 }

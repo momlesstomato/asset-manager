@@ -5,7 +5,6 @@ import (
 
 	"asset-manager/core/storage"
 	"asset-manager/feature/furniture/models"
-	furnituresync "asset-manager/feature/furniture/sync"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -33,5 +32,5 @@ func NewService(client storage.Client, bucket string, logger *zap.Logger, db *go
 
 // GetFurnitureDetail returns detailed integrity info for a single furniture item.
 func (s *Service) GetFurnitureDetail(ctx context.Context, identifier string) (*models.FurnitureDetailReport, error) {
-	return furnituresync.CheckFurnitureItem(ctx, s.client, s.bucket, s.db, s.emulator, identifier)
+	return CheckFurnitureItem(ctx, s.client, s.bucket, s.db, s.emulator, identifier)
 }

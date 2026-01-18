@@ -6,25 +6,14 @@ import (
 
 // Report contains the results of a furniture integrity check.
 type Report struct {
-	Assets           []AssetIntegrityItem `json:"assets"`
-	TotalAssets      int                  `json:"total_assets"`
-	StorageMissing   int                  `json:"storage_missing"`
-	DatabaseMissing  int                  `json:"database_missing"`
-	FurniDataMissing int                  `json:"furnidata_missing"`
-	WithMismatches   int                  `json:"with_mismatches"`
-	GeneratedAt      string               `json:"generated_at"`
-	ExecutionTime    string               `json:"execution_time"`
-}
-
-// AssetIntegrityItem represents the integrity status of a single furniture asset.
-type AssetIntegrityItem struct {
-	ID               int      `json:"id,omitempty"`
-	Name             string   `json:"name"`
-	ClassName        string   `json:"class_name,omitempty"`
-	FurniDataMissing bool     `json:"furnidata_missing"`
-	StorageMissing   bool     `json:"storage_missing"`
-	DatabaseMissing  bool     `json:"database_missing"`
-	Mismatches       []string `json:"mismatches,omitempty"`
+	TotalExpected       int      `json:"total_expected"`
+	TotalFound          int      `json:"total_found"`
+	MissingAssets       []string `json:"missing_assets"`
+	UnregisteredAssets  []string `json:"unregistered_assets"`
+	MalformedAssets     []string `json:"malformed_assets"`
+	ParameterMismatches []string `json:"parameter_mismatches,omitempty"`
+	GeneratedAt         string   `json:"generated_at"`
+	ExecutionTime       string   `json:"execution_time"`
 }
 
 // FurnitureDetailReport contains the detailed integrity check for a single item.
@@ -53,35 +42,35 @@ type FurnitureData struct {
 // FurnitureItem represents a single furniture definition matching FURNIDATA.md
 type FurnitureItem struct {
 	// Common Parameters
-	ID              int    `json:"id" gamedata:"id"`
-	ClassName       string `json:"classname" gamedata:"classname"`
-	Revision        int    `json:"revision" gamedata:"revision"`
-	Category        string `json:"category" gamedata:"category"`
-	Name            string `json:"name" gamedata:"name"`
-	Description     string `json:"description" gamedata:"description"`
-	AdURL           string `json:"adurl,omitempty" gamedata:"adurl"`
-	OfferID         int    `json:"offerid,omitempty" gamedata:"offerid"`
-	Buyout          bool   `json:"buyout,omitempty" gamedata:"buyout"`
-	RentOfferID     int    `json:"rentofferid,omitempty" gamedata:"rentofferid"`
-	RentBuyout      bool   `json:"rentbuyout,omitempty" gamedata:"rentbuyout"`
-	BC              bool   `json:"bc,omitempty" gamedata:"bc"`
-	ExcludedDynamic bool   `json:"excludeddynamic,omitempty" gamedata:"excludeddynamic"`
-	CustomParams    string `json:"customparams,omitempty" gamedata:"customparams"`
-	SpecialType     int    `json:"specialtype,omitempty" gamedata:"specialtype"`
-	FurniLine       string `json:"furniline,omitempty" gamedata:"furniline"`
-	Environment     string `json:"environment,omitempty" gamedata:"environment"`
-	Rare            bool   `json:"rare,omitempty" gamedata:"rare"`
+	ID              int    `json:"id"`
+	ClassName       string `json:"classname"`
+	Revision        int    `json:"revision"`
+	Category        string `json:"category"`
+	Name            string `json:"name"`
+	Description     string `json:"description"`
+	AdURL           string `json:"adurl,omitempty"`
+	OfferID         int    `json:"offerid,omitempty"`
+	Buyout          bool   `json:"buyout,omitempty"`
+	RentOfferID     int    `json:"rentofferid,omitempty"`
+	RentBuyout      bool   `json:"rentbuyout,omitempty"`
+	BC              bool   `json:"bc,omitempty"`
+	ExcludedDynamic bool   `json:"excludeddynamic,omitempty"`
+	CustomParams    string `json:"customparams,omitempty"`
+	SpecialType     int    `json:"specialtype,omitempty"`
+	FurniLine       string `json:"furniline,omitempty"`
+	Environment     string `json:"environment,omitempty"`
+	Rare            bool   `json:"rare,omitempty"`
 
 	// Floor Item Specifics
-	DefaultDir int `json:"defaultdir,omitempty" gamedata:"defaultdir"`
-	XDim       int `json:"xdim,omitempty" gamedata:"xdim"`
-	YDim       int `json:"ydim,omitempty" gamedata:"ydim"`
+	DefaultDir int `json:"defaultdir,omitempty"`
+	XDim       int `json:"xdim,omitempty"`
+	YDim       int `json:"ydim,omitempty"`
 	PartColors struct {
 		Color []string `json:"color"`
-	} `json:"partcolors,omitempty" gamedata:"partcolors"`
-	CanStandOn bool `json:"canstandon,omitempty" gamedata:"canstandon"`
-	CanSitOn   bool `json:"cansiton,omitempty" gamedata:"cansiton"`
-	CanLayOn   bool `json:"canlayon,omitempty" gamedata:"canlayon"`
+	} `json:"partcolors,omitempty"`
+	CanStandOn bool `json:"canstandon,omitempty"`
+	CanSitOn   bool `json:"cansiton,omitempty"`
+	CanLayOn   bool `json:"canlayon,omitempty"`
 }
 
 // Validate checks if the furniture item has the minimum required fields and valid formats.

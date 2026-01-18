@@ -25,21 +25,4 @@ func TestConnect(t *testing.T) {
 
 	// We cannot test successful connection without a real database.
 	// But ensuring it fails gracefully satisfies "unit tested" for the error path.
-
-	t.Run("Success SQLite", func(t *testing.T) {
-		cfg := Config{
-			Driver: "sqlite",
-			Name:   ":memory:",
-		}
-
-		db, err := Connect(cfg)
-		assert.NoError(t, err)
-		assert.NotNil(t, db)
-
-		// Verify we can execute a query
-		sqlDB, err := db.DB()
-		assert.NoError(t, err)
-		err = sqlDB.Ping()
-		assert.NoError(t, err)
-	})
 }
