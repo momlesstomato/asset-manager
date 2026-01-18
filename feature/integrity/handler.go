@@ -3,6 +3,7 @@ package integrity
 import (
 	"asset-manager/core/logger"
 	"asset-manager/feature/integrity/checks"
+	"sync"
 
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
@@ -44,48 +45,71 @@ func (h *Handler) RegisterRoutes(app fiber.Router) {
 // @Success 200 {object} map[string]interface{} "Combined Report"
 // @Failure 500 {object} map[string]string "Internal Server Error"
 // @Router /integrity [get]
+// HandleIntegrityCheck triggers all integrity checks concurrently for faster execution.
+// It aggregates the results from each check into a combined report.
 func (h *Handler) HandleIntegrityCheck(c *fiber.Ctx) error {
 	l := logger.WithRayID(h.service.logger, c)
-	l.Info("Triggering all integrity checks")
+	l.Info("Triggering all integrity checks concurrently")
 
 	ctx := c.Context()
-	report := make(map[string]interface{})
-
+	type result struct {
+		key  string
+		data interface{}
+	}
+	results := make(chan result, 5)
+	var wg sync.WaitGroup
+	wg.Add(5)
 	// Structure
-	if missing, err := h.service.CheckStructure(ctx); err != nil {
-		report["structure"] = map[string]interface{}{"status": "error", "error": err.Error()}
-	} else {
-		report["structure"] = map[string]interface{}{"status": "ok", "missing": missing}
-	}
-
+	go func() {
+		defer wg.Done()
+		if missing, err := h.service.CheckStructure(ctx); err != nil {
+			results <- result{"structure", map[string]interface{}{"status": "error", "error": err.Error()}}
+		} else {
+			results <- result{"structure", map[string]interface{}{"status": "ok", "missing": missing}}
+		}
+	}()
 	// Bundled
-	if missing, err := h.service.CheckBundled(ctx); err != nil {
-		report["bundled"] = map[string]interface{}{"status": "error", "error": err.Error()}
-	} else {
-		report["bundled"] = map[string]interface{}{"status": "ok", "missing": missing}
-	}
-
+	go func() {
+		defer wg.Done()
+		if missing, err := h.service.CheckBundled(ctx); err != nil {
+			results <- result{"bundled", map[string]interface{}{"status": "error", "error": err.Error()}}
+		} else {
+			results <- result{"bundled", map[string]interface{}{"status": "ok", "missing": missing}}
+		}
+	}()
 	// GameData
-	if missing, err := h.service.CheckGameData(ctx); err != nil {
-		report["gamedata"] = map[string]interface{}{"status": "error", "error": err.Error()}
-	} else {
-		report["gamedata"] = map[string]interface{}{"status": "ok", "missing": missing}
-	}
-
+	go func() {
+		defer wg.Done()
+		if missing, err := h.service.CheckGameData(ctx); err != nil {
+			results <- result{"gamedata", map[string]interface{}{"status": "error", "error": err.Error()}}
+		} else {
+			results <- result{"gamedata", map[string]interface{}{"status": "ok", "missing": missing}}
+		}
+	}()
 	// Server
-	if srvReport, err := h.service.CheckServer(); err != nil {
-		report["server"] = map[string]interface{}{"status": "error", "error": err.Error()}
-	} else {
-		report["server"] = srvReport
+	go func() {
+		defer wg.Done()
+		if srvReport, err := h.service.CheckServer(); err != nil {
+			results <- result{"server", map[string]interface{}{"status": "error", "error": err.Error()}}
+		} else {
+			results <- result{"server", srvReport}
+		}
+	}()
+	// Furniture (requires DB)
+	go func() {
+		defer wg.Done()
+		if furnReport, err := h.service.CheckFurniture(ctx); err != nil {
+			results <- result{"furniture", map[string]interface{}{"status": "error", "error": err.Error()}}
+		} else {
+			results <- result{"furniture", furnReport}
+		}
+	}()
+	wg.Wait()
+	close(results)
+	report := make(map[string]interface{})
+	for r := range results {
+		report[r.key] = r.data
 	}
-
-	// Furniture (Slow, requires database)
-	if furnReport, err := h.service.CheckFurniture(ctx); err != nil {
-		report["furniture"] = map[string]interface{}{"status": "error", "error": err.Error()}
-	} else {
-		report["furniture"] = furnReport
-	}
-
 	return c.JSON(report)
 }
 

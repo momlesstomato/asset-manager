@@ -12,4 +12,6 @@ type Config struct {
 	Password string `mapstructure:"password" default:""`
 	// Name is the database name.
 	Name string `mapstructure:"name" default:"emulator"`
+	// Driver is the database driver (mysql, sqlite).
+	Driver string `mapstructure:"driver" default:"mysql"`
 }

@@ -39,22 +39,16 @@ func (so *SyncOperations) SyncSchema(ctx context.Context) ([]string, error) {
 			continue
 		}
 
-		// Check if column already exists
-		checkSQL := `SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
-					WHERE TABLE_SCHEMA = DATABASE() 
-					AND TABLE_NAME = ? 
-					AND COLUMN_NAME = ?`
-
-		var count int
-		if err := so.service.db.Raw(checkSQL, tableName, mapping.DBColumn).Scan(&count).Error; err != nil {
-			return changes, fmt.Errorf("failed to check column %s: %w", mapping.DBColumn, err)
-		}
-
-		if count > 0 {
-			continue // Column already exists
+		// Check if column already exists using GORM Migrator (Dialect agnostic)
+		if so.service.db.Migrator().HasColumn(tableName, mapping.DBColumn) {
+			continue
 		}
 
 		// Generate ALTER TABLE statement
+		// Note: GORM Migrator doesn't easily support adding columns with specific defaults in a generic way without a struct.
+		// Since we are adding columns dynamically based on mappings (without struct updates in some cases?), we still might need Raw SQL for the ALTER.
+		// But the check can be generic.
+
 		defaultClause := ""
 		if mapping.DefaultValue != "NULL" {
 			defaultClause = fmt.Sprintf(" DEFAULT %s", mapping.DefaultValue)
@@ -347,24 +341,53 @@ func (so *SyncOperations) CleanupDuplicates(ctx context.Context) error {
 		return nil
 	}
 
-	// SQL to delete duplicates, keeping the one with the highest ID (assuming likely newest/correct)
-	// MySQL specific syntax
-	query := fmt.Sprintf(`
-		DELETE t1 FROM %s t1 
-		INNER JOIN %s t2 
-		WHERE t1.id < t2.id AND t1.sprite_id = t2.sprite_id
-	`, tableName, tableName)
+	// SQL Agnostic approach: Find duplicates then delete
+	// 1. Find sprite_ids with duplicates
+	type DuplicateResult struct {
+		SpriteID int
+		Count    int
+	}
+	var duplicates []DuplicateResult
 
-	so.service.logger.Info("Cleaning up duplicate assets...")
-	result := so.service.db.Exec(query)
-	if result.Error != nil {
-		return fmt.Errorf("failed to clean duplicates: %w", result.Error)
+	err := so.service.db.Table(tableName).
+		Select("sprite_id, count(*) as count").
+		Group("sprite_id").
+		Having("count(*) > 1").
+		Scan(&duplicates).Error
+
+	if err != nil {
+		return fmt.Errorf("failed to find duplicates: %w", err)
 	}
 
-	if result.RowsAffected > 0 {
-		so.service.logger.Info("Removed duplicate assets", zap.Int64("count", result.RowsAffected))
-	} else {
+	if len(duplicates) == 0 {
 		so.service.logger.Info("No duplicates found")
+		return nil
+	}
+
+	var deletedCount int64
+
+	// 2. For each duplicate group, keep the max ID, delete others
+	for _, dup := range duplicates {
+		var ids []int
+		// Fetch all IDs for this sprite_id
+		if err := so.service.db.Table(tableName).Select("id").Where("sprite_id = ?", dup.SpriteID).Order("id DESC").Scan(&ids).Error; err != nil {
+			continue
+		}
+
+		if len(ids) > 1 {
+			// Keep first (max ID because Ordered DESC), delete rest
+			toDelete := ids[1:]
+			res := so.service.db.Table(tableName).Where("id IN ?", toDelete).Delete(nil)
+			if res.Error == nil {
+				deletedCount += res.RowsAffected
+			}
+		}
+	}
+
+	if deletedCount > 0 {
+		so.service.logger.Info("Removed duplicate assets", zap.Int64("count", deletedCount))
+	} else {
+		so.service.logger.Info("No duplicates actually removed (check logic)")
 	}
 	return nil
 }

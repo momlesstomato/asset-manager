@@ -7,18 +7,34 @@ import (
 	"testing"
 
 	"asset-manager/core/storage/mocks"
+	"asset-manager/feature/furniture/models"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func setupHandler() (*Handler, *mocks.Client) {
 	mockClient := new(mocks.Client)
 	logger := zap.NewNop()
-	svc := NewService(mockClient, "test-bucket", logger, nil, "")
+	// Create an in-memory SQLite DB using GORM for integrity checks that require a DB connection
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		panic(err)
+	}
+
+	// Auto-migrate the schema for the in-memory DB because CheckIntegrity queries it.
+	// Since we pass "arcturus" as emulator, we migrate ArcturusItemsBase.
+	if err := db.AutoMigrate(&models.ArcturusItemsBase{}); err != nil {
+		panic(err)
+	}
+
+	// No DB query expectations needed for SQLite in-memory DB
+	svc := NewService(mockClient, "test-bucket", logger, db, "arcturus")
 	return NewHandler(svc), mockClient
 }
 
