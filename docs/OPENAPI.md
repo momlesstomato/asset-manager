@@ -43,9 +43,14 @@ func (h *Handler) HandleGetAsset(c *fiber.Ctx) error {
 To generate the `docs` folder containing `swagger.json` and `swagger.yaml`, run:
 
 ```bash
-swag init -g cmd/server/main.go --output docs/swagger
+swag init -g cmd/start.go --output docs/swagger
 ```
-*(Adjust the entry point path as per your project structure)*
+
+Or use the full path to swag if it's not in your PATH:
+
+```bash
+$(go env GOPATH)/bin/swag init -g cmd/start.go --output docs/swagger
+```
 
 ## 1:1 Parity
 The API MUST expose functionality equivalent to the CLI commands where applicable. Ensure that all integrity checks available via `go run main.go integrity ...` are also accessible via HTTP endpoints.
