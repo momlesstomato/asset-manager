@@ -21,6 +21,8 @@ import (
 type FurnitureAdapter struct {
 	// classnameToID maps classnames to IDs for storage key resolution
 	classnameToID map[string]string
+	// idToClassname maps IDs to classnames for checking storage by ID
+	idToClassname map[string]string
 	mu            sync.RWMutex
 	// mappingReady signals when the classnameToID map is fully populated
 	mappingReady chan struct{}
@@ -30,6 +32,7 @@ type FurnitureAdapter struct {
 func NewAdapter() *FurnitureAdapter {
 	return &FurnitureAdapter{
 		classnameToID: make(map[string]string),
+		idToClassname: make(map[string]string),
 		mappingReady:  make(chan struct{}),
 	}
 }
@@ -50,6 +53,7 @@ type DBItem struct {
 	CanSit     bool
 	CanWalk    bool
 	CanLay     bool
+	Type       string
 }
 
 // GDItem represents a gamedata furniture item.
@@ -62,6 +66,7 @@ type GDItem struct {
 	CanSitOn   bool   `json:"cansiton"`
 	CanStandOn bool   `json:"canstandon"`
 	CanLayOn   bool   `json:"canlayon"`
+	Type       string `json:"-"` // "s" for room items, "i" for wall items
 }
 
 // FurnitureData represents the structure of FurnitureData.json.
@@ -159,6 +164,13 @@ func (a *FurnitureAdapter) LoadDBIndex(ctx context.Context, db *gorm.DB, serverP
 			}
 		}
 
+		// Load Type
+		if typeCol, ok := profile.Columns[ColType]; ok {
+			if val, exists := row[typeCol]; exists {
+				item.Type = toString(val)
+			}
+		}
+
 		// Use sprite_id as key (sprite_id matches gamedata id, not database id)
 		key := strconv.Itoa(item.SpriteID)
 		index[key] = item
@@ -193,25 +205,28 @@ func (a *FurnitureAdapter) LoadGamedataIndex(ctx context.Context, client storage
 	// Build classname mapping concurrently
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.classnameToID = make(map[string]string)
 
 	// Process room items
 	for _, item := range furniData.RoomItemTypes.FurniType {
 		if item.ID > 0 && item.ClassName != "" {
+			item.Type = "s" // Floor item
 			key := strconv.Itoa(item.ID)
 			index[key] = item
 			// Map classname directly to ID (classname in gamedata matches filename)
 			a.classnameToID[item.ClassName] = key
+			a.idToClassname[key] = item.ClassName
 		}
 	}
 
 	// Process wall items
 	for _, item := range furniData.WallItemTypes.FurniType {
 		if item.ID > 0 && item.ClassName != "" {
+			item.Type = "i" // Wall item
 			key := strconv.Itoa(item.ID)
 			index[key] = item
 			// Map classname directly to ID (classname in gamedata matches filename)
 			a.classnameToID[item.ClassName] = key
+			a.idToClassname[key] = item.ClassName
 		}
 	}
 
@@ -360,6 +375,21 @@ func (a *FurnitureAdapter) CompareFields(dbItem reconcile.DBItem, gdItem reconci
 		mismatches = append(mismatches, fmt.Sprintf("can_lay: gd=%v db=%v", gd.CanLayOn, db.CanLay))
 	}
 
+	// Compare Type (Wall vs Floor)
+	// If DB type is "i", it MUST be a wall item in gamedata (Type="i").
+	// If DB type is NOT "i", it is generally a room item.
+	// Note: DB might use other letters for floor items (s, e, r, etc.), but 'i' is exclusively wall.
+	if db.Type == "i" {
+		if gd.Type != "i" {
+			mismatches = append(mismatches, fmt.Sprintf("type: gd='room' (WallItemTypes=false) db='i' (wall)"))
+		}
+	} else {
+		// If DB is not wall, GD should not be wall (unless we discover specific exceptions)
+		if gd.Type == "i" {
+			mismatches = append(mismatches, fmt.Sprintf("type: gd='wall' (WallItemTypes=true) db='%s' (not wall)", db.Type))
+		}
+	}
+
 	return mismatches
 }
 
@@ -373,35 +403,35 @@ func (a *FurnitureAdapter) QueryDB(ctx context.Context, db *gorm.DB, serverProfi
 	// Try by ID first
 	if query.ID != "" {
 		if id, err := strconv.Atoi(query.ID); err == nil {
-			err := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColID]+" = ?", id).First(&row).Error
-			if err == nil {
-				return a.parseDBRow(row, profile), nil
+			result := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColID]+" = ?", id).Limit(1).Scan(&row)
+			if result.Error != nil {
+				return nil, result.Error
 			}
-			if err != gorm.ErrRecordNotFound {
-				return nil, err
+			if result.RowsAffected > 0 {
+				return a.parseDBRow(row, profile), nil
 			}
 		}
 	}
 
 	// Try by classname
 	if query.Classname != "" {
-		err := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColItemName]+" = ?", query.Classname).First(&row).Error
-		if err == nil {
-			return a.parseDBRow(row, profile), nil
+		result := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColItemName]+" = ?", query.Classname).Limit(1).Scan(&row)
+		if result.Error != nil {
+			return nil, result.Error
 		}
-		if err != gorm.ErrRecordNotFound {
-			return nil, err
+		if result.RowsAffected > 0 {
+			return a.parseDBRow(row, profile), nil
 		}
 	}
 
 	// Try by name
 	if query.Name != "" {
-		err := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColPublicName]+" = ?", query.Name).First(&row).Error
-		if err == nil {
-			return a.parseDBRow(row, profile), nil
+		result := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColPublicName]+" = ?", query.Name).Limit(1).Scan(&row)
+		if result.Error != nil {
+			return nil, result.Error
 		}
-		if err != gorm.ErrRecordNotFound {
-			return nil, err
+		if result.RowsAffected > 0 {
+			return a.parseDBRow(row, profile), nil
 		}
 	}
 
@@ -440,12 +470,19 @@ func (a *FurnitureAdapter) QueryGamedata(ctx context.Context, client storage.Cli
 // CheckStorage checks if a specific entity exists in storage.
 func (a *FurnitureAdapter) CheckStorage(ctx context.Context, client storage.Client, bucket, prefix, extension string, key string) (bool, error) {
 	// For furniture, the key is the ID, but storage uses classname
-	// We need to derive the filename from the key
-	// This is problematic - we'd need the classname mapping
-	// For now, we'll do a simple check
+	// We check the idToClassname mapping.
+
+	a.mu.RLock()
+	classname, ok := a.idToClassname[key]
+	a.mu.RUnlock()
+
+	filename := key
+	if ok {
+		filename = classname
+	}
 
 	// Try to find object with this key as classname
-	objectKey := fmt.Sprintf("%s/%s%s", prefix, key, extension)
+	objectKey := fmt.Sprintf("%s/%s%s", prefix, filename, extension)
 
 	opts := minio.ListObjectsOptions{
 		Prefix:  objectKey,

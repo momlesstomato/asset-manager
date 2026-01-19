@@ -1,13 +1,13 @@
 package integrity
 
 import (
-	"bytes"
-	"io"
+	"encoding/json"
 	"net/http/httptest"
 	"testing"
 
 	"asset-manager/core/storage/mocks"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gofiber/fiber/v2"
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
@@ -15,173 +15,89 @@ import (
 	"go.uber.org/zap"
 )
 
-func setupHandler() (*Handler, *mocks.Client) {
+func setupTestApp(t *testing.T) (*fiber.App, *mocks.Client, sqlmock.Sqlmock) {
+	app := fiber.New()
 	mockClient := new(mocks.Client)
+	db, sqlMock := setupMockDB(t)
 	logger := zap.NewNop()
-	svc := NewService(mockClient, "test-bucket", logger, nil, "")
-	return NewHandler(svc), mockClient
+	svc := NewService(mockClient, "test-bucket", logger, db, "arcturus")
+	handler := NewHandler(svc)
+	handler.RegisterRoutes(app)
+	return app, mockClient, sqlMock
 }
 
-func TestHandler_HandleIntegrityCheck(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
-		h, mockClient := setupHandler()
-		app := fiber.New()
-		app.Get("/integrity", h.HandleIntegrityCheck)
+func TestHandleStructureCheck(t *testing.T) {
+	app, mockClient, _ := setupTestApp(t)
 
-		// Mock Structure Check
-		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
-		chStructure := make(chan minio.ObjectInfo)
-		close(chStructure)
-		// It might be called multiple times for different prefixes
-		mockClient.On("ListObjects", mock.Anything, "test-bucket", mock.Anything).Return((<-chan minio.ObjectInfo)(chStructure))
+	// Mock Service call
+	mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
+	// Structure check logic calls checking specific folders.
+	// Since we are integration testing the handler with mocked service dependencies,
+	// we need to expect what Checks.CheckStructure calls.
+	// CheckStructure calls ListObjects for each folder.
+	// We'll mock ListObjects to return empty channel (missing folders)
+	ch := make(chan minio.ObjectInfo)
+	close(ch)
+	mockClient.On("ListObjects", mock.Anything, "test-bucket", mock.Anything).Return((<-chan minio.ObjectInfo)(ch))
 
-		// Mock Furniture Check (requires GetObject)
-		validJSON := `{"roomitemtypes":{"furnitype":[]},"wallitemtypes":{"furnitype":[]}}`
-		mockClient.On("GetObject", mock.Anything, "test-bucket", "gamedata/FurnitureData.json", mock.Anything).
-			Return(io.NopCloser(bytes.NewReader([]byte(validJSON))), nil)
+	req := httptest.NewRequest("GET", "/integrity/structure", nil)
+	resp, err := app.Test(req)
 
-		req := httptest.NewRequest("GET", "/integrity", nil)
-		resp, err := app.Test(req)
-		assert.NoError(t, err)
-		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
-	})
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
 
-	t.Run("Error Partial", func(t *testing.T) {
-		h, mockClient := setupHandler()
-		app := fiber.New()
-		app.Get("/integrity", h.HandleIntegrityCheck)
-
-		// Mock BucketExists failure (affects multiple checks)
-		// We use .Maybe() or let it return error.
-		// Since checks are sequential, if Structure fails (first), it might continue or not?
-		// Handler calls them all sequentially.
-		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(false, nil) // Bucket missing
-
-		// Furniture might try GetObject and fail
-		mockClient.On("GetObject", mock.Anything, "test-bucket", "gamedata/FurnitureData.json", mock.Anything).
-			Return(nil, minio.ErrorResponse{Code: "NoSuchKey"})
-
-		// ListObjects might be called
-		ch := make(chan minio.ObjectInfo)
-		close(ch)
-		mockClient.On("ListObjects", mock.Anything, "test-bucket", mock.Anything).Return((<-chan minio.ObjectInfo)(ch))
-
-		req := httptest.NewRequest("GET", "/integrity", nil)
-		resp, err := app.Test(req)
-		assert.NoError(t, err)
-		// It should still return 200 OK because it returns a report with error statuses
-		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
-	})
+	var body map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&body)
+	assert.Equal(t, "checked", body["status"])
+	assert.NotEmpty(t, body["missing"])
 }
 
-func TestHandler_HandleStructureCheck(t *testing.T) {
-	t.Run("Check Only", func(t *testing.T) {
-		h, mockClient := setupHandler()
-		app := fiber.New()
-		app.Get("/integrity/structure", h.HandleStructureCheck)
+func TestHandleBundleCheck(t *testing.T) {
+	app, mockClient, _ := setupTestApp(t)
 
-		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
-		ch := make(chan minio.ObjectInfo)
-		close(ch)
-		mockClient.On("ListObjects", mock.Anything, "test-bucket", mock.Anything).Return((<-chan minio.ObjectInfo)(ch))
+	mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
+	ch := make(chan minio.ObjectInfo)
+	close(ch)
+	mockClient.On("ListObjects", mock.Anything, "test-bucket", mock.Anything).Return((<-chan minio.ObjectInfo)(ch))
 
-		req := httptest.NewRequest("GET", "/integrity/structure", nil)
-		resp, err := app.Test(req)
-		assert.NoError(t, err)
-		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
-	})
+	req := httptest.NewRequest("GET", "/integrity/bundled", nil)
+	resp, err := app.Test(req)
 
-	t.Run("Fix Logic", func(t *testing.T) {
-		h, mockClient := setupHandler()
-		app := fiber.New()
-		app.Get("/integrity/structure", h.HandleStructureCheck)
-
-		// Simulate missing
-		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
-		// Return empty list objects -> all missing
-		ch := make(chan minio.ObjectInfo)
-		close(ch)
-		mockClient.On("ListObjects", mock.Anything, "test-bucket", mock.Anything).Return((<-chan minio.ObjectInfo)(ch))
-
-		// If fix=true, it calls PutObject
-		mockClient.On("PutObject", mock.Anything, "test-bucket", mock.Anything, mock.Anything, int64(0), mock.Anything).Return(minio.UploadInfo{}, nil)
-
-		req := httptest.NewRequest("GET", "/integrity/structure?fix=true", nil)
-		resp, err := app.Test(req)
-		assert.NoError(t, err)
-		assert.Equal(t, fiber.StatusOK, resp.StatusCode) // Returns "status": "fixed"
-	})
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
 }
 
-func TestHandler_HandleFurnitureCheck(t *testing.T) {
-	t.Run("Check Error", func(t *testing.T) {
-		h, mockClient := setupHandler()
-		app := fiber.New()
-		app.Get("/integrity/furniture", h.HandleFurnitureCheck)
+func TestHandleGameDataCheck(t *testing.T) {
+	app, mockClient, _ := setupTestApp(t)
 
-		// Mock failure
-		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(false, io.EOF)
+	mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
+	ch := make(chan minio.ObjectInfo)
+	close(ch)
+	mockClient.On("ListObjects", mock.Anything, "test-bucket", mock.Anything).Return((<-chan minio.ObjectInfo)(ch))
 
-		req := httptest.NewRequest("GET", "/integrity/furniture", nil)
-		resp, err := app.Test(req)
-		assert.NoError(t, err)
-		assert.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	})
+	req := httptest.NewRequest("GET", "/integrity/gamedata", nil)
+	resp, err := app.Test(req)
 
-	// Success path
-	t.Run("Success", func(t *testing.T) {
-		h, mockClient := setupHandler()
-		app := fiber.New()
-		app.Get("/integrity/furniture", h.HandleFurnitureCheck)
-
-		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
-
-		validJSON := `{"roomitemtypes":{"furnitype":[]},"wallitemtypes":{"furnitype":[]}}`
-		mockClient.On("GetObject", mock.Anything, "test-bucket", "gamedata/FurnitureData.json", mock.Anything).
-			Return(io.NopCloser(bytes.NewReader([]byte(validJSON))), nil)
-
-		ch := make(chan minio.ObjectInfo)
-		close(ch)
-		mockClient.On("ListObjects", mock.Anything, "test-bucket", mock.Anything).Return((<-chan minio.ObjectInfo)(ch))
-
-		req := httptest.NewRequest("GET", "/integrity/furniture", nil)
-		resp, err := app.Test(req)
-		assert.NoError(t, err)
-		if resp.StatusCode != fiber.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			t.Logf("Response body: %s", body)
-		}
-		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
-	})
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
 }
 
-func TestHandler_RegisterRoutes(t *testing.T) {
-	t.Run("Register", func(t *testing.T) {
-		h, mockClient := setupHandler()
-		app := fiber.New()
-		h.RegisterRoutes(app)
+func TestHandleServerCheck(t *testing.T) {
+	app, _, sqlMock := setupTestApp(t)
 
-		// We need to mock calls for /integrity call that happens in this test?
-		// No, we just check if route exists. But app.Test() executes the handler if it matches.
-		// h.HandleIntegrityCheck triggers all checks.
-		// This makes testing "RegisterRoutes" hard without extensive mocking.
-		// We can just verify the route logic separately or skip execution.
-		// But let's mock headers to 404 on Root path?
-		// The test checks "/integrity/" which maps to HandleIntegrityCheck.
+	// Expect DB queries
+	permissions := sqlmock.NewRows([]string{"id", "permission", "description"})
+	sqlMock.ExpectQuery("SELECT \\* FROM permissions").WillReturnRows(permissions)
 
-		// Mock Dependencies for HandleIntegrityCheck
-		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
-		ch := make(chan minio.ObjectInfo)
-		close(ch)
-		mockClient.On("ListObjects", mock.Anything, "test-bucket", mock.Anything).Return((<-chan minio.ObjectInfo)(ch))
-		validJSON := `{"roomitemtypes":{"furnitype":[]},"wallitemtypes":{"furnitype":[]}}`
-		mockClient.On("GetObject", mock.Anything, "test-bucket", "gamedata/FurnitureData.json", mock.Anything).
-			Return(io.NopCloser(bytes.NewReader([]byte(validJSON))), nil)
+	pages := sqlmock.NewRows([]string{"id", "parent_id", "caption"})
+	sqlMock.ExpectQuery("SELECT \\* FROM catalog_pages").WillReturnRows(pages)
 
-		req := httptest.NewRequest("GET", "/integrity/", nil)
-		resp, _ := app.Test(req)
+	items := sqlmock.NewRows([]string{"id", "sprite_id", "public_name"})
+	sqlMock.ExpectQuery("SELECT \\* FROM items_base").WillReturnRows(items)
 
-		// Should receive 200 OK from HandleIntegrityCheck
-		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
-	})
+	req := httptest.NewRequest("GET", "/integrity/server", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
 }

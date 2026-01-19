@@ -8,11 +8,34 @@ import (
 
 	"asset-manager/core/storage/mocks"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
+
+// setupMockDB creates a mock GORM DB for testing.
+func setupMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to open mock sql db: %v", err)
+	}
+
+	dialector := mysql.New(mysql.Config{
+		Conn:                      db,
+		SkipInitializeWithVersion: true,
+	})
+
+	gormDB, err := gorm.Open(dialector, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Failed to open gorm db: %v", err)
+	}
+
+	return gormDB, mock
+}
 
 func TestService_Structure(t *testing.T) {
 	mockClient := new(mocks.Client)
@@ -78,14 +101,14 @@ func TestService_Bundled(t *testing.T) {
 }
 
 func TestService_Furniture(t *testing.T) {
-	mockClient := new(mocks.Client)
-	logger := zap.NewNop()
-	svc := NewService(mockClient, "test-bucket", logger, nil, "")
-
 	// Mock valid JSON
 	mockJSON := `{"roomitemtypes":{"furnitype":[]},"wallitemtypes":{"furnitype":[]}}`
 
 	t.Run("Failure", func(t *testing.T) {
+		mockClient := new(mocks.Client)
+		logger := zap.NewNop()
+		svc := NewService(mockClient, "test-bucket", logger, nil, "")
+
 		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(false, nil).Once()
 		report, err := svc.CheckFurniture(context.Background(), false)
 		assert.Error(t, err)
@@ -93,6 +116,10 @@ func TestService_Furniture(t *testing.T) {
 	})
 
 	t.Run("Success", func(t *testing.T) {
+		mockClient := new(mocks.Client)
+		logger := zap.NewNop()
+		svc := NewService(mockClient, "test-bucket", logger, nil, "")
+
 		// Mock BucketExists
 		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
 

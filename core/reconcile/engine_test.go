@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -13,16 +14,79 @@ import (
 
 // mockAdapter is a simple test adapter
 type mockAdapter struct {
-	dbIndex      map[string]DBItem
-	gdIndex      map[string]GDItem
-	storageSet   map[string]struct{}
-	mismatches   map[string][]string
-	nameResolver func(DBItem, GDItem) string
-	dbLoadFunc   func(context.Context, *gorm.DB, string) (map[string]DBItem, error)
+	dbIndex         map[string]DBItem
+	gdIndex         map[string]GDItem
+	storageSet      map[string]struct{}
+	mismatches      map[string][]string
+	nameResolver    func(DBItem, GDItem) string
+	dbLoadFunc      func(context.Context, *gorm.DB, string) (map[string]DBItem, error)
+	gdLoadFunc      func(context.Context, storage.Client, string, string, []string) (map[string]GDItem, error)
+	storageLoadFunc func(context.Context, storage.Client, string, string, string) (map[string]struct{}, error)
 }
 
 func (m *mockAdapter) Name() string {
 	return "mock"
+}
+
+// TestBuildCache_ErrorHandling tests that BuildCache correctly handles errors from adapter load functions.
+func TestBuildCache_ErrorHandling(t *testing.T) {
+	tests := []struct {
+		name       string
+		dbErr      error
+		gdErr      error
+		storageErr error
+		expectErr  string
+	}{
+		{
+			name:      "DB load error",
+			dbErr:     fmt.Errorf("db error"),
+			expectErr: "db error",
+		},
+		{
+			name:      "Gamedata load error",
+			gdErr:     fmt.Errorf("gamedata error"),
+			expectErr: "gamedata error",
+		},
+		{
+			name:       "Storage load error",
+			storageErr: fmt.Errorf("storage error"),
+			expectErr:  "storage error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adapter := &mockAdapter{
+				dbLoadFunc: func(ctx context.Context, db *gorm.DB, serverProfile string) (map[string]DBItem, error) {
+					if tt.dbErr != nil {
+						return nil, tt.dbErr
+					}
+					return map[string]DBItem{}, nil
+				},
+				gdLoadFunc: func(ctx context.Context, client storage.Client, bucket, objectName string, paths []string) (map[string]GDItem, error) {
+					if tt.gdErr != nil {
+						return nil, tt.gdErr
+					}
+					return map[string]GDItem{}, nil
+				},
+				storageLoadFunc: func(ctx context.Context, client storage.Client, bucket, prefix, extension string) (map[string]struct{}, error) {
+					if tt.storageErr != nil {
+						return nil, tt.storageErr
+					}
+					return map[string]struct{}{}, nil
+				},
+			}
+
+			spec := &Spec{
+				Adapter:  adapter,
+				CacheTTL: 5 * time.Minute,
+			}
+
+			_, err := BuildCache(context.Background(), spec, nil, nil, "")
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectErr)
+		})
+	}
 }
 
 func (m *mockAdapter) LoadDBIndex(ctx context.Context, db *gorm.DB, serverProfile string) (map[string]DBItem, error) {
@@ -33,10 +97,16 @@ func (m *mockAdapter) LoadDBIndex(ctx context.Context, db *gorm.DB, serverProfil
 }
 
 func (m *mockAdapter) LoadGamedataIndex(ctx context.Context, client storage.Client, bucket, objectName string, paths []string) (map[string]GDItem, error) {
+	if m.gdLoadFunc != nil {
+		return m.gdLoadFunc(ctx, client, bucket, objectName, paths)
+	}
 	return m.gdIndex, nil
 }
 
 func (m *mockAdapter) LoadStorageSet(ctx context.Context, client storage.Client, bucket, prefix, extension string) (map[string]struct{}, error) {
+	if m.storageLoadFunc != nil {
+		return m.storageLoadFunc(ctx, client, bucket, prefix, extension)
+	}
 	return m.storageSet, nil
 }
 

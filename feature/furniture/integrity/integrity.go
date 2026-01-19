@@ -20,6 +20,15 @@ import (
 func CheckIntegrity(ctx context.Context, client storage.Client, bucket string, db *gorm.DB, emulator string) (*models.Report, error) {
 	startTime := time.Now()
 
+	// Check if bucket exists
+	exists, err := client.BucketExists(ctx, bucket)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check bucket existence: %w", err)
+	}
+	if !exists {
+		return nil, fmt.Errorf("bucket %s not found", bucket)
+	}
+
 	// Create furniture adapter and spec
 	adapter := furnitureAdp.NewAdapter()
 	spec := &reconcile.Spec{
@@ -53,7 +62,7 @@ func CheckFurnitureItem(ctx context.Context, client storage.Client, bucket strin
 	adapter := furnitureAdp.NewAdapter()
 	spec := &reconcile.Spec{
 		Adapter:            adapter,
-		CacheTTL:           5 * time.Minute, // Use caching for targeted queries
+		CacheTTL:           0, // No caching for one-off CLI check
 		StoragePrefix:      "bundled/furniture",
 		StorageExtension:   ".nitro",
 		GamedataPaths:      []string{"roomitemtypes.furnitype", "wallitemtypes.furnitype"},
