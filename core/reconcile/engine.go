@@ -96,6 +96,7 @@ func ReconcileOne(ctx context.Context, spec *Spec, db *gorm.DB, client storage.C
 	result := ReconcileResult{
 		ID:              key,
 		Name:            spec.Adapter.ResolveName(dbItem, gdItem),
+		Metadata:        spec.Adapter.GetMetadata(dbItem, gdItem),
 		DBPresent:       dbItem != nil,
 		GamedataPresent: gdItem != nil,
 		StoragePresent:  storagePresent,
@@ -145,7 +146,7 @@ func buildResult(key string, dbIndex map[string]DBItem, gdIndex map[string]GDIte
 		Mismatch:        []string{},
 	}
 
-	// Resolve name
+	// Resolve name and metadata
 	if dbPresent || gdPresent {
 		var dbItemPtr DBItem
 		var gdItemPtr GDItem
@@ -156,6 +157,7 @@ func buildResult(key string, dbIndex map[string]DBItem, gdIndex map[string]GDIte
 			gdItemPtr = gdItem
 		}
 		result.Name = adapter.ResolveName(dbItemPtr, gdItemPtr)
+		result.Metadata = adapter.GetMetadata(dbItemPtr, gdItemPtr)
 	}
 
 	// Compare fields if both present

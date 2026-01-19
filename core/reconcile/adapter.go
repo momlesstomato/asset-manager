@@ -69,4 +69,8 @@ type Adapter interface {
 	// This is used for fast targeted reconciliation without listing all objects.
 	// Returns true if the entity's storage object exists.
 	CheckStorage(ctx context.Context, client storage.Client, bucket, prefix, extension string, key string) (bool, error)
+
+	// GetMetadata returns model-specific metadata (e.g., classname, category) for the entity.
+	// This data is included in the ReconcileResult.
+	GetMetadata(dbItem DBItem, gdItem GDItem) map[string]string
 }

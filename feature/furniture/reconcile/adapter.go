@@ -337,6 +337,24 @@ func (a *FurnitureAdapter) ResolveName(dbItem reconcile.DBItem, gdItem reconcile
 	return ""
 }
 
+// GetMetadata returns classname for furniture.
+func (a *FurnitureAdapter) GetMetadata(dbItem reconcile.DBItem, gdItem reconcile.GDItem) map[string]string {
+	meta := make(map[string]string)
+
+	val := ""
+	if gdItem != nil {
+		val = gdItem.(GDItem).ClassName
+	}
+	if val == "" && dbItem != nil {
+		val = dbItem.(DBItem).ItemName
+	}
+
+	if val != "" {
+		meta["classname"] = val
+	}
+	return meta
+}
+
 // CompareFields compares DB and gamedata items and returns mismatch descriptions.
 func (a *FurnitureAdapter) CompareFields(dbItem reconcile.DBItem, gdItem reconcile.GDItem) []string {
 	db := dbItem.(DBItem)
@@ -403,11 +421,16 @@ func (a *FurnitureAdapter) QueryDB(ctx context.Context, db *gorm.DB, serverProfi
 	// Try by ID first
 	if query.ID != "" {
 		if id, err := strconv.Atoi(query.ID); err == nil {
-			result := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColID]+" = ?", id).Limit(1).Scan(&row)
+			row = make(map[string]interface{}) // Ensure map is initialized
+			result := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColID]+" = ?", id).Take(&row)
 			if result.Error != nil {
-				return nil, result.Error
-			}
-			if result.RowsAffected > 0 {
+				if result.Error == gorm.ErrRecordNotFound {
+					// Fall through to other checks might be unsafe if ID is numeric but not found?
+					// But we should continue just in case.
+				} else {
+					return nil, result.Error
+				}
+			} else if result.RowsAffected > 0 {
 				return a.parseDBRow(row, profile), nil
 			}
 		}
@@ -415,23 +438,23 @@ func (a *FurnitureAdapter) QueryDB(ctx context.Context, db *gorm.DB, serverProfi
 
 	// Try by classname
 	if query.Classname != "" {
-		result := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColItemName]+" = ?", query.Classname).Limit(1).Scan(&row)
-		if result.Error != nil {
-			return nil, result.Error
-		}
-		if result.RowsAffected > 0 {
+		row = make(map[string]interface{})
+		result := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColItemName]+" = ?", query.Classname).Take(&row)
+		if result.Error == nil && result.RowsAffected > 0 {
 			return a.parseDBRow(row, profile), nil
+		} else if result.Error != nil && result.Error != gorm.ErrRecordNotFound {
+			return nil, result.Error
 		}
 	}
 
 	// Try by name
 	if query.Name != "" {
-		result := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColPublicName]+" = ?", query.Name).Limit(1).Scan(&row)
-		if result.Error != nil {
-			return nil, result.Error
-		}
-		if result.RowsAffected > 0 {
+		row = make(map[string]interface{})
+		result := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColPublicName]+" = ?", query.Name).Take(&row)
+		if result.Error == nil && result.RowsAffected > 0 {
 			return a.parseDBRow(row, profile), nil
+		} else if result.Error != nil && result.Error != gorm.ErrRecordNotFound {
+			return nil, result.Error
 		}
 	}
 
@@ -503,19 +526,44 @@ func (a *FurnitureAdapter) CheckStorage(ctx context.Context, client storage.Clie
 
 // Helper functions for type conversion
 
+// Helper functions for type conversion
+
 func toInt(val interface{}) int {
 	switch v := val.(type) {
 	case int:
 		return v
 	case int64:
 		return int(v)
+	case int32:
+		return int(v)
+	case int16:
+		return int(v)
+	case int8:
+		return int(v)
+	case uint:
+		return int(v)
+	case uint64:
+		return int(v)
+	case uint32:
+		return int(v)
+	case uint16:
+		return int(v)
+	case uint8:
+		return int(v)
 	case float64:
+		return int(v)
+	case float32:
 		return int(v)
 	case string:
 		i, _ := strconv.Atoi(v)
 		return i
+	case []byte:
+		i, _ := strconv.Atoi(string(v))
+		return i
 	default:
-		return 0
+		s := fmt.Sprintf("%v", v)
+		i, _ := strconv.Atoi(s)
+		return i
 	}
 }
 
@@ -534,12 +582,13 @@ func toBool(val interface{}) bool {
 	switch v := val.(type) {
 	case bool:
 		return v
-	case int:
-		return v == 1
-	case int64:
-		return v == 1
+	case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8:
+		return toInt(v) == 1
 	case string:
-		return v == "1" || v == "true"
+		return v == "1" || strings.ToLower(v) == "true"
+	case []byte:
+		s := string(v)
+		return s == "1" || strings.ToLower(s) == "true"
 	default:
 		return false
 	}

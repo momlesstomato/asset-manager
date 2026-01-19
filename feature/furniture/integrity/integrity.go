@@ -173,7 +173,11 @@ func convertToDetailReport(result *reconcile.ReconcileResult) *models.FurnitureD
 	}
 
 	// Set classname and nitro file
-	if result.Name != "" {
+	if classname, ok := result.Metadata["classname"]; ok && classname != "" {
+		report.ClassName = classname
+		report.NitroFile = classname + ".nitro"
+	} else if result.Name != "" {
+		// Fallback for edge cases (though unlikely for furniture)
 		report.ClassName = result.Name
 		report.NitroFile = result.Name + ".nitro"
 	}

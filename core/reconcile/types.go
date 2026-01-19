@@ -23,6 +23,9 @@ type ReconcileResult struct {
 	// Mismatch contains descriptions of field mismatches between DB and gamedata.
 	// Each string describes a specific mismatch, e.g., "sprite_id: gd=0 db=1".
 	Mismatch []string `json:"mismatch"`
+
+	// Metadata contains model-specific arbitrary data (e.g., classname, category).
+	Metadata map[string]string `json:"metadata"`
 }
 
 // Query represents a search query for targeted reconciliation.

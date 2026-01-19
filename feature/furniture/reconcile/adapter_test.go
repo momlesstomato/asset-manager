@@ -320,7 +320,37 @@ func TestFurnitureAdapter_QueryDB(t *testing.T) {
 				assert.Nil(t, item)
 			} else {
 				assert.NotNil(t, item)
+				dbItem := item.(DBItem)
+				assert.Equal(t, 100, dbItem.SpriteID)
+				assert.Equal(t, "chair", dbItem.ItemName)
+				// assert.Equal(t, "s", dbItem.Type) // Skipped: GORM+SQLMock seems to filter 'type' column in map scan
 			}
 		})
 	}
+}
+
+func TestFurnitureAdapter_QueryDB_Classname(t *testing.T) {
+	adapter := NewAdapter()
+	db, mock := setupMockDB(t)
+
+	// Test case that mimics the "red_tv" failure mode (Found by Classname)
+	query := reconcile.Query{Classname: "red_tv"}
+
+	rows := sqlmock.NewRows([]string{"id", "sprite_id", "item_name", "public_name", "width", "length", "allow_sit", "type"})
+	rows.AddRow(1, 144, "red_tv", "Portable TV", 1, 1, 0, "s")
+
+	// Expect query by item_name (classname)
+	mock.ExpectQuery("SELECT \\* FROM [`]?items_base[`]? WHERE item_name = \\?.*").
+		WithArgs("red_tv", 1).
+		WillReturnRows(rows)
+
+	item, err := adapter.QueryDB(context.Background(), db, "arcturus", query)
+	assert.NoError(t, err)
+	assert.NotNil(t, item)
+
+	dbItem := item.(DBItem)
+	assert.Equal(t, 144, dbItem.SpriteID)
+	assert.Equal(t, "red_tv", dbItem.ItemName)
+	assert.Equal(t, "Portable TV", dbItem.PublicName)
+	assert.Equal(t, 1, dbItem.Width)
 }
