@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"asset-manager/core/reconcile"
 	"asset-manager/core/storage"
@@ -17,11 +18,20 @@ import (
 )
 
 // FurnitureAdapter implements the reconcile.Adapter interface for furniture assets.
-type FurnitureAdapter struct{}
+type FurnitureAdapter struct {
+	// classnameToID maps classnames to IDs for storage key resolution
+	classnameToID map[string]string
+	mu            sync.RWMutex
+	// mappingReady signals when the classnameToID map is fully populated
+	mappingReady chan struct{}
+}
 
 // NewAdapter creates a new furniture adapter.
 func NewAdapter() *FurnitureAdapter {
-	return &FurnitureAdapter{}
+	return &FurnitureAdapter{
+		classnameToID: make(map[string]string),
+		mappingReady:  make(chan struct{}),
+	}
 }
 
 // Name returns the unique name of this adapter.
@@ -78,15 +88,38 @@ func (a *FurnitureAdapter) LoadDBIndex(ctx context.Context, db *gorm.DB, serverP
 	// Build query based on server profile
 	tableName := profile.TableName
 
-	// Query all items
-	var rows []map[string]interface{}
-	err := db.WithContext(ctx).Table(tableName).Find(&rows).Error
+	// Query all items using raw SQL (GORM's Find doesn't populate map slices properly)
+	query := fmt.Sprintf("SELECT * FROM %s", tableName)
+	dbRows, err := db.WithContext(ctx).Raw(query).Rows()
 	if err != nil {
 		return nil, fmt.Errorf("failed to query %s: %w", tableName, err)
 	}
+	defer dbRows.Close()
+
+	// Get column names
+	columns, err := dbRows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get columns: %w", err)
+	}
 
 	// Parse rows into DBItem
-	for _, row := range rows {
+	for dbRows.Next() {
+		// Create a map to scan into
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := dbRows.Scan(valuePtrs...); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Convert to map
+		row := make(map[string]interface{})
+		for i, col := range columns {
+			row[col] = values[i]
+		}
 		item := DBItem{}
 
 		// Extract values using profile column mappings
@@ -126,8 +159,8 @@ func (a *FurnitureAdapter) LoadDBIndex(ctx context.Context, db *gorm.DB, serverP
 			}
 		}
 
-		// Use ID as key
-		key := strconv.Itoa(item.ID)
+		// Use sprite_id as key (sprite_id matches gamedata id, not database id)
+		key := strconv.Itoa(item.SpriteID)
 		index[key] = item
 	}
 
@@ -157,11 +190,18 @@ func (a *FurnitureAdapter) LoadGamedataIndex(ctx context.Context, client storage
 	// Build index from both arrays
 	index := make(map[string]reconcile.GDItem)
 
+	// Build classname mapping concurrently
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.classnameToID = make(map[string]string)
+
 	// Process room items
 	for _, item := range furniData.RoomItemTypes.FurniType {
 		if item.ID > 0 && item.ClassName != "" {
 			key := strconv.Itoa(item.ID)
 			index[key] = item
+			// Map classname directly to ID (classname in gamedata matches filename)
+			a.classnameToID[item.ClassName] = key
 		}
 	}
 
@@ -170,7 +210,18 @@ func (a *FurnitureAdapter) LoadGamedataIndex(ctx context.Context, client storage
 		if item.ID > 0 && item.ClassName != "" {
 			key := strconv.Itoa(item.ID)
 			index[key] = item
+			// Map classname directly to ID (classname in gamedata matches filename)
+			a.classnameToID[item.ClassName] = key
 		}
+	}
+
+	// Signal that mapping is ready
+	// Use a select to ensure we don't close an already closed channel if this runs multiple times
+	select {
+	case <-a.mappingReady:
+		// already closed
+	default:
+		close(a.mappingReady)
 	}
 
 	return index, nil
@@ -178,6 +229,18 @@ func (a *FurnitureAdapter) LoadGamedataIndex(ctx context.Context, client storage
 
 // LoadStorageSet lists all furniture objects in storage.
 func (a *FurnitureAdapter) LoadStorageSet(ctx context.Context, client storage.Client, bucket, prefix, extension string) (map[string]struct{}, error) {
+	// Wait for mapping to be ready before processing storage
+	// This ensures we can resolve classnames to IDs
+	select {
+	case <-a.mappingReady:
+		// Mapping is ready
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	// Add a timeout just in case gamedata loading fails silently or hangs, though ctx.Done should cover it
+	case <-time.After(5 * time.Minute):
+		return nil, fmt.Errorf("timeout waiting for gamedata mapping")
+	}
+
 	set := make(map[string]struct{})
 	var mu sync.Mutex
 
@@ -206,7 +269,8 @@ func (a *FurnitureAdapter) LoadStorageSet(ctx context.Context, client storage.Cl
 // ExtractDBKey returns the entity key from a DB item.
 func (a *FurnitureAdapter) ExtractDBKey(item reconcile.DBItem) string {
 	dbItem := item.(DBItem)
-	return strconv.Itoa(dbItem.ID)
+	// Use sprite_id as key (matches gamedata id)
+	return strconv.Itoa(dbItem.SpriteID)
 }
 
 // ExtractGDKey returns the entity key from a gamedata item.
@@ -216,9 +280,7 @@ func (a *FurnitureAdapter) ExtractGDKey(item reconcile.GDItem) string {
 }
 
 // ExtractStorageKey parses a storage object key to extract the entity key.
-// For furniture, we need to map filename to ID, which requires looking up by classname.
-// Since we don't have the index here, we'll return the classname as the key for now.
-// The reconciliation will need to handle this mapping.
+// For furniture, we map the filename (classname) to an ID using the gamedata mapping.
 func (a *FurnitureAdapter) ExtractStorageKey(objectKey, extension string) (key string, ok bool) {
 	// Check if it has the right extension
 	if !strings.HasSuffix(objectKey, extension) {
@@ -232,17 +294,20 @@ func (a *FurnitureAdapter) ExtractStorageKey(objectKey, extension string) (key s
 	}
 	filename := parts[len(parts)-1]
 
-	// Remove extension
+	// Remove extension - filename now matches classname from gamedata
 	filename = strings.TrimSuffix(filename, extension)
 
-	// Remove *suffix if present
-	if idx := strings.Index(filename, "*"); idx != -1 {
-		filename = filename[:idx]
+	// Look up ID from classname mapping (filename IS the classname)
+	a.mu.RLock()
+	id, found := a.classnameToID[filename]
+	a.mu.RUnlock()
+
+	if found {
+		return id, true
 	}
 
-	// For now, we're using classname as storage key
-	// This means we need to match by classname, not ID
-	// We'll fix this in the reconciliation logic
+	// If not found in mapping, the item exists in storage but not in gamedata
+	// Return the classname as the key so it shows up as "unregistered"
 	return filename, true
 }
 

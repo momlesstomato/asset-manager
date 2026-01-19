@@ -95,6 +95,12 @@ func BuildCache(ctx context.Context, spec *Spec, db *gorm.DB, client storage.Cli
 	if storageErr != nil {
 		return nil, storageErr
 	}
+	if gdErr != nil {
+		return nil, gdErr
+	}
+	if storageErr != nil {
+		return nil, storageErr
+	}
 
 	return &ReconcileCache{
 		DBIndex:    dbIndex,
