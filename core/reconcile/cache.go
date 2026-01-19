@@ -127,7 +127,7 @@ func GetOrBuildCache(ctx context.Context, spec *Spec, db *gorm.DB, client storag
 	}
 
 	// Slow path: build cache using singleflight to prevent stampedes
-	result, err, _ := globalCacheStore.sf.Do(cacheKey, func() (interface{}, error) {
+	result, err, _ := globalCacheStore.sf.Do(cacheKey, func() (any, error) {
 		// Double-check after acquiring singleflight lock
 		globalCacheStore.mu.RLock()
 		cache, exists := globalCacheStore.caches[cacheKey]

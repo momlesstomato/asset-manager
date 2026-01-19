@@ -12,6 +12,7 @@ import (
 
 	"asset-manager/core/reconcile"
 	"asset-manager/core/storage"
+	"asset-manager/core/utils"
 
 	"github.com/minio/minio-go/v7"
 	"gorm.io/gorm"
@@ -110,8 +111,8 @@ func (a *FurnitureAdapter) LoadDBIndex(ctx context.Context, db *gorm.DB, serverP
 	// Parse rows into DBItem
 	for dbRows.Next() {
 		// Create a map to scan into
-		values := make([]interface{}, len(columns))
-		valuePtrs := make([]interface{}, len(columns))
+		values := make([]any, len(columns))
+		valuePtrs := make([]any, len(columns))
 		for i := range values {
 			valuePtrs[i] = &values[i]
 		}
@@ -121,7 +122,7 @@ func (a *FurnitureAdapter) LoadDBIndex(ctx context.Context, db *gorm.DB, serverP
 		}
 
 		// Convert to map
-		row := make(map[string]interface{})
+		row := make(map[string]any)
 		for i, col := range columns {
 			row[col] = values[i]
 		}
@@ -129,45 +130,45 @@ func (a *FurnitureAdapter) LoadDBIndex(ctx context.Context, db *gorm.DB, serverP
 
 		// Extract values using profile column mappings
 		if id, ok := row[profile.Columns[ColID]]; ok {
-			item.ID = toInt(id)
+			item.ID = utils.ToInt(id)
 		}
 		if spriteID, ok := row[profile.Columns[ColSpriteID]]; ok {
-			item.SpriteID = toInt(spriteID)
+			item.SpriteID = utils.ToInt(spriteID)
 		}
 		if itemName, ok := row[profile.Columns[ColItemName]]; ok {
-			item.ItemName = toString(itemName)
+			item.ItemName = utils.ToString(itemName)
 		}
 		if publicName, ok := row[profile.Columns[ColPublicName]]; ok {
-			item.PublicName = toString(publicName)
+			item.PublicName = utils.ToString(publicName)
 		}
 		if width, ok := row[profile.Columns[ColWidth]]; ok {
-			item.Width = toInt(width)
+			item.Width = utils.ToInt(width)
 		}
 		if length, ok := row[profile.Columns[ColLength]]; ok {
-			item.Length = toInt(length)
+			item.Length = utils.ToInt(length)
 		}
 
 		// Boolean fields (handle different types)
 		if canSitCol, ok := profile.Columns[ColCanSit]; ok {
 			if val, exists := row[canSitCol]; exists {
-				item.CanSit = toBool(val)
+				item.CanSit = utils.ToBool(val)
 			}
 		}
 		if canWalkCol, ok := profile.Columns[ColCanWalk]; ok {
 			if val, exists := row[canWalkCol]; exists {
-				item.CanWalk = toBool(val)
+				item.CanWalk = utils.ToBool(val)
 			}
 		}
 		if canLayCol, ok := profile.Columns[ColCanLay]; ok {
 			if val, exists := row[canLayCol]; exists {
-				item.CanLay = toBool(val)
+				item.CanLay = utils.ToBool(val)
 			}
 		}
 
 		// Load Type
 		if typeCol, ok := profile.Columns[ColType]; ok {
 			if val, exists := row[typeCol]; exists {
-				item.Type = toString(val)
+				item.Type = utils.ToString(val)
 			}
 		}
 
@@ -399,7 +400,7 @@ func (a *FurnitureAdapter) CompareFields(dbItem reconcile.DBItem, gdItem reconci
 	// Note: DB might use other letters for floor items (s, e, r, etc.), but 'i' is exclusively wall.
 	if db.Type == "i" {
 		if gd.Type != "i" {
-			mismatches = append(mismatches, fmt.Sprintf("type: gd='room' (WallItemTypes=false) db='i' (wall)"))
+			mismatches = append(mismatches, "type: gd='room' (WallItemTypes=false) db='i' (wall)")
 		}
 	} else {
 		// If DB is not wall, GD should not be wall (unless we discover specific exceptions)
@@ -415,13 +416,13 @@ func (a *FurnitureAdapter) CompareFields(dbItem reconcile.DBItem, gdItem reconci
 func (a *FurnitureAdapter) QueryDB(ctx context.Context, db *gorm.DB, serverProfile string, query reconcile.Query) (reconcile.DBItem, error) {
 	profile := GetProfileByName(serverProfile)
 
-	var row map[string]interface{}
+	var row map[string]any
 	tableName := profile.TableName
 
 	// Try by ID first
 	if query.ID != "" {
 		if id, err := strconv.Atoi(query.ID); err == nil {
-			row = make(map[string]interface{}) // Ensure map is initialized
+			row = make(map[string]any) // Ensure map is initialized
 			result := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColID]+" = ?", id).Take(&row)
 			if result.Error != nil {
 				if result.Error == gorm.ErrRecordNotFound {
@@ -438,7 +439,7 @@ func (a *FurnitureAdapter) QueryDB(ctx context.Context, db *gorm.DB, serverProfi
 
 	// Try by classname
 	if query.Classname != "" {
-		row = make(map[string]interface{})
+		row = make(map[string]any)
 		result := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColItemName]+" = ?", query.Classname).Take(&row)
 		if result.Error == nil && result.RowsAffected > 0 {
 			return a.parseDBRow(row, profile), nil
@@ -449,7 +450,7 @@ func (a *FurnitureAdapter) QueryDB(ctx context.Context, db *gorm.DB, serverProfi
 
 	// Try by name
 	if query.Name != "" {
-		row = make(map[string]interface{})
+		row = make(map[string]any)
 		result := db.WithContext(ctx).Table(tableName).Where(profile.Columns[ColPublicName]+" = ?", query.Name).Take(&row)
 		if result.Error == nil && result.RowsAffected > 0 {
 			return a.parseDBRow(row, profile), nil
@@ -524,112 +525,42 @@ func (a *FurnitureAdapter) CheckStorage(ctx context.Context, client storage.Clie
 	return false, nil
 }
 
-// Helper functions for type conversion
-
-// Helper functions for type conversion
-
-func toInt(val interface{}) int {
-	switch v := val.(type) {
-	case int:
-		return v
-	case int64:
-		return int(v)
-	case int32:
-		return int(v)
-	case int16:
-		return int(v)
-	case int8:
-		return int(v)
-	case uint:
-		return int(v)
-	case uint64:
-		return int(v)
-	case uint32:
-		return int(v)
-	case uint16:
-		return int(v)
-	case uint8:
-		return int(v)
-	case float64:
-		return int(v)
-	case float32:
-		return int(v)
-	case string:
-		i, _ := strconv.Atoi(v)
-		return i
-	case []byte:
-		i, _ := strconv.Atoi(string(v))
-		return i
-	default:
-		s := fmt.Sprintf("%v", v)
-		i, _ := strconv.Atoi(s)
-		return i
-	}
-}
-
-func toString(val interface{}) string {
-	switch v := val.(type) {
-	case string:
-		return v
-	case []byte:
-		return string(v)
-	default:
-		return fmt.Sprintf("%v", v)
-	}
-}
-
-func toBool(val interface{}) bool {
-	switch v := val.(type) {
-	case bool:
-		return v
-	case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8:
-		return toInt(v) == 1
-	case string:
-		return v == "1" || strings.ToLower(v) == "true"
-	case []byte:
-		s := string(v)
-		return s == "1" || strings.ToLower(s) == "true"
-	default:
-		return false
-	}
-}
-
 // parseDBRow converts a raw DB row to a DBItem.
-func (a *FurnitureAdapter) parseDBRow(row map[string]interface{}, profile ServerProfile) DBItem {
+func (a *FurnitureAdapter) parseDBRow(row map[string]any, profile ServerProfile) DBItem {
 	item := DBItem{}
 
 	if id, ok := row[profile.Columns[ColID]]; ok {
-		item.ID = toInt(id)
+		item.ID = utils.ToInt(id)
 	}
 	if spriteID, ok := row[profile.Columns[ColSpriteID]]; ok {
-		item.SpriteID = toInt(spriteID)
+		item.SpriteID = utils.ToInt(spriteID)
 	}
 	if itemName, ok := row[profile.Columns[ColItemName]]; ok {
-		item.ItemName = toString(itemName)
+		item.ItemName = utils.ToString(itemName)
 	}
 	if publicName, ok := row[profile.Columns[ColPublicName]]; ok {
-		item.PublicName = toString(publicName)
+		item.PublicName = utils.ToString(publicName)
 	}
 	if width, ok := row[profile.Columns[ColWidth]]; ok {
-		item.Width = toInt(width)
+		item.Width = utils.ToInt(width)
 	}
 	if length, ok := row[profile.Columns[ColLength]]; ok {
-		item.Length = toInt(length)
+		item.Length = utils.ToInt(length)
 	}
 
 	if canSitCol, ok := profile.Columns[ColCanSit]; ok {
 		if val, exists := row[canSitCol]; exists {
-			item.CanSit = toBool(val)
+			item.CanSit = utils.ToBool(val)
 		}
 	}
 	if canWalkCol, ok := profile.Columns[ColCanWalk]; ok {
 		if val, exists := row[canWalkCol]; exists {
-			item.CanWalk = toBool(val)
+			item.CanWalk = utils.ToBool(val)
 		}
 	}
 	if canLayCol, ok := profile.Columns[ColCanLay]; ok {
 		if val, exists := row[canLayCol]; exists {
-			item.CanLay = toBool(val)
+			item.CanLay = utils.ToBool(val)
 		}
 	}
 

@@ -82,8 +82,8 @@ func (s *Spec) CacheKey() string {
 
 // DBItem represents a database entity with arbitrary fields.
 // Adapters define the concrete type and provide a way to extract this.
-type DBItem interface{}
+type DBItem any
 
 // GDItem represents a gamedata JSON entity with arbitrary fields.
 // Adapters define the concrete type and provide a way to extract this.
-type GDItem interface{}
+type GDItem any

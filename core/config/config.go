@@ -57,7 +57,7 @@ func LoadConfig(path string) (*Config, error) {
 
 // bindValues uses reflection to iterate over the struct and set default values in Viper
 // based on the 'default' and 'mapstructure' tags.
-func bindValues(v *viper.Viper, iface interface{}, prefix string) {
+func bindValues(v *viper.Viper, iface any, prefix string) {
 	t := reflect.TypeOf(iface)
 
 	// If it's a pointer, get the element

@@ -143,6 +143,10 @@ func (m *mockAdapter) CompareFields(dbItem DBItem, gdItem GDItem) []string {
 	return []string{}
 }
 
+func (m *mockAdapter) GetMetadata(dbItem DBItem, gdItem GDItem) map[string]string {
+	return map[string]string{}
+}
+
 func (m *mockAdapter) QueryDB(ctx context.Context, db *gorm.DB, serverProfile string, query Query) (DBItem, error) {
 	if item, ok := m.dbIndex[query.ID]; ok {
 		return item, nil

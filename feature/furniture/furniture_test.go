@@ -70,7 +70,7 @@ func TestService_GetFurnitureDetail(t *testing.T) {
 	// ReconcileOne will look for Storage, DB, Gamedata.
 	// Storage:
 	mockClient.On("ListObjects", mock.Anything, "test-bucket", mock.Anything).
-		Return(make(chan interface{})).Maybe() // It might return generic channel or typed... minio v7 typed.
+		Return(make(chan any)).Maybe() // It might return generic channel or typed... minio v7 typed.
 
 	// Actually, ReconcileOne calling LoadStorageSet calls ListObjects.
 	// Let's just run it and expect an eventual result or error, sufficient for coverage.

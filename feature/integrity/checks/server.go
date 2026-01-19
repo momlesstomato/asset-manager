@@ -32,7 +32,7 @@ func CheckServerIntegrity(db *gorm.DB, emulator string) (*ServerReport, error) {
 	}
 
 	// 1. Resolve Model based on Emulator
-	var model interface{}
+	var model any
 	switch emulator {
 	case "arcturus":
 		model = models.ArcturusItemsBase{}

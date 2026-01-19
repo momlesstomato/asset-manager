@@ -37,7 +37,7 @@ func (h *Handler) RegisterRoutes(app fiber.Router) {
 // @Tags integrity
 // @Accept json
 // @Produce json
-// @Success 200 {object} map[string]interface{} "Combined Report"
+// @Success 200 {object} map[string]any "Combined Report"
 // @Failure 500 {object} map[string]string "Internal Server Error"
 // @Router /integrity [get]
 func (h *Handler) HandleIntegrityCheck(c *fiber.Ctx) error {
@@ -45,39 +45,39 @@ func (h *Handler) HandleIntegrityCheck(c *fiber.Ctx) error {
 	l.Info("Triggering all integrity checks")
 
 	ctx := c.Context()
-	report := make(map[string]interface{})
+	report := make(map[string]any)
 
 	// Structure
 	if missing, err := h.service.CheckStructure(ctx); err != nil {
-		report["structure"] = map[string]interface{}{"status": "error", "error": err.Error()}
+		report["structure"] = map[string]any{"status": "error", "error": err.Error()}
 	} else {
-		report["structure"] = map[string]interface{}{"status": "ok", "missing": missing}
+		report["structure"] = map[string]any{"status": "ok", "missing": missing}
 	}
 
 	// Bundled
 	if missing, err := h.service.CheckBundled(ctx); err != nil {
-		report["bundled"] = map[string]interface{}{"status": "error", "error": err.Error()}
+		report["bundled"] = map[string]any{"status": "error", "error": err.Error()}
 	} else {
-		report["bundled"] = map[string]interface{}{"status": "ok", "missing": missing}
+		report["bundled"] = map[string]any{"status": "ok", "missing": missing}
 	}
 
 	// GameData
 	if missing, err := h.service.CheckGameData(ctx); err != nil {
-		report["gamedata"] = map[string]interface{}{"status": "error", "error": err.Error()}
+		report["gamedata"] = map[string]any{"status": "error", "error": err.Error()}
 	} else {
-		report["gamedata"] = map[string]interface{}{"status": "ok", "missing": missing}
+		report["gamedata"] = map[string]any{"status": "ok", "missing": missing}
 	}
 
 	// Server
 	if srvReport, err := h.service.CheckServer(); err != nil {
-		report["server"] = map[string]interface{}{"status": "error", "error": err.Error()}
+		report["server"] = map[string]any{"status": "error", "error": err.Error()}
 	} else {
 		report["server"] = srvReport
 	}
 
 	// Furniture (Slow)
 	if furnReport, err := h.service.CheckFurniture(ctx, false); err != nil {
-		report["furniture"] = map[string]interface{}{"status": "error", "error": err.Error()}
+		report["furniture"] = map[string]any{"status": "error", "error": err.Error()}
 	} else {
 		report["furniture"] = furnReport
 	}
@@ -92,7 +92,7 @@ func (h *Handler) HandleIntegrityCheck(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Param fix query boolean false "Fix missing folders"
-// @Success 200 {object} map[string]interface{} "Structure Report"
+// @Success 200 {object} map[string]any "Structure Report"
 // @Failure 500 {object} map[string]string "Internal Server Error"
 // @Router /integrity/structure [get]
 func (h *Handler) HandleStructureCheck(c *fiber.Ctx) error {
@@ -137,7 +137,7 @@ func (h *Handler) HandleStructureCheck(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Param fix query boolean false "Fix missing folders"
-// @Success 200 {object} map[string]interface{} "Bundle Report"
+// @Success 200 {object} map[string]any "Bundle Report"
 // @Failure 500 {object} map[string]string "Internal Server Error"
 // @Router /integrity/bundled [get]
 func (h *Handler) HandleBundleCheck(c *fiber.Ctx) error {
@@ -181,7 +181,7 @@ func (h *Handler) HandleBundleCheck(c *fiber.Ctx) error {
 // @Tags integrity
 // @Accept json
 // @Produce json
-// @Success 200 {object} map[string]interface{} "GameData Report"
+// @Success 200 {object} map[string]any "GameData Report"
 // @Failure 500 {object} map[string]string "Internal Server Error"
 // @Router /integrity/gamedata [get]
 func (h *Handler) HandleGameDataCheck(c *fiber.Ctx) error {
@@ -206,7 +206,7 @@ func (h *Handler) HandleGameDataCheck(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Param db query boolean false "Check Database Integrity too"
-// @Success 200 {object} map[string]interface{} "Furniture Report"
+// @Success 200 {object} map[string]any "Furniture Report"
 // @Failure 500 {object} map[string]string "Internal Server Error"
 // @Router /integrity/furniture [get]
 func (h *Handler) HandleFurnitureCheck(c *fiber.Ctx) error {

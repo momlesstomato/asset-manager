@@ -41,7 +41,7 @@ func TestHandleStructureCheck(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	var body map[string]interface{}
+	var body map[string]any
 	json.NewDecoder(resp.Body).Decode(&body)
 	assert.Equal(t, "checked", body["status"])
 	assert.NotEmpty(t, body["missing"])
