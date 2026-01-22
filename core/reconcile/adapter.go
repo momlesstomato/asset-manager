@@ -41,7 +41,7 @@ type Adapter interface {
 	// ExtractStorageKey parses a storage object key and returns the entity key.
 	// If the object key doesn't match the expected pattern, ok should be false.
 	// Example: "bundled/furniture/chair.nitro" -> ("1", true) if ID is 1 for chair.
-	ExtractStorageKey(objectKey, extension string) (key string, ok bool)
+	ExtractStorageKey(objectKey, prefix, extension string) (key string, ok bool)
 
 	// ResolveName returns the display name for an entity given available DB and/or gamedata items.
 	// Either item may be nil if not present in that source.
@@ -73,4 +73,30 @@ type Adapter interface {
 	// GetMetadata returns model-specific metadata (e.g., classname, category) for the entity.
 	// This data is included in the ReconcileResult.
 	GetMetadata(dbItem DBItem, gdItem GDItem) map[string]string
+
+	// Prepare validates and updates the database schema for compatibility.
+	// This ensures columns have sufficient length and types match expectations.
+	Prepare(ctx context.Context, db *gorm.DB) error
+}
+
+// Mutator extends Adapter with mutation capabilities for purge and sync operations.
+// Adapters implementing this interface can handle destructive cleanup and data repair.
+type Mutator interface {
+	// DeleteDB removes an entity from the database by key.
+	// Returns an error if the deletion fails.
+	DeleteDB(ctx context.Context, key string) error
+
+	// DeleteGamedata removes an entity from gamedata JSON by key.
+	// Implementations should batch modifications and write once per operation.
+	// Returns an error if the deletion fails.
+	DeleteGamedata(ctx context.Context, key string) error
+
+	// DeleteStorage removes an entity from storage by key.
+	// Returns an error if the deletion fails.
+	DeleteStorage(ctx context.Context, key string) error
+
+	// SyncDBFromGamedata updates DB fields to match gamedata for the given key.
+	// The gdItem parameter provides the authoritative source data.
+	// Returns an error if the sync fails.
+	SyncDBFromGamedata(ctx context.Context, key string, gdItem GDItem) error
 }

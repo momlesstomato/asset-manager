@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"time"
@@ -26,8 +27,18 @@ func Connect(cfg Config) (*gorm.DB, error) {
 
 	userInfo := url.UserPassword(cfg.User, cfg.Password).String()
 
-	dsn := fmt.Sprintf("%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		userInfo, cfg.Host, cfg.Port, cfg.Name)
+	// Ensure timeout defaults if not set (Config struct sets default but verifying safety)
+	timeout := cfg.TimeoutSeconds
+	if timeout <= 0 {
+		timeout = 30
+	}
+
+	// Add timeouts to DSN
+	// timeout: connection setup timeout
+	// readTimeout: I/O read timeout
+	// writeTimeout: I/O write timeout
+	dsn := fmt.Sprintf("%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=%ds&readTimeout=%ds&writeTimeout=%ds",
+		userInfo, cfg.Host, cfg.Port, cfg.Name, timeout, timeout, timeout)
 
 	// Suppress GORM logging for cleaner optional warnings in main logger
 	gormConfig := &gorm.Config{
@@ -49,8 +60,12 @@ func Connect(cfg Config) (*gorm.DB, error) {
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	// Verify connection
-	if err := sqlDB.Ping(); err != nil {
+	// Verify connection with context timeout
+	// We use the same timeout duration for the initial ping.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	if err := sqlDB.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 

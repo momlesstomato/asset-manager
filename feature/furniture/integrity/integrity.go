@@ -116,11 +116,9 @@ func convertToReport(results []reconcile.ReconcileResult) *models.Report {
 
 		// Missing assets: in gamedata but not in storage
 		if r.GamedataPresent && !r.StoragePresent {
-			// Generate filename from classname if available
 			filename := r.Name + ".nitro"
-			// Try to extract classname from name if possible
-			if r.Name != "" {
-				filename = r.Name + ".nitro"
+			if r.Name == "" {
+				filename = r.ID + ".nitro"
 			}
 			missingAssets = append(missingAssets, filename)
 		}
@@ -139,10 +137,6 @@ func convertToReport(results []reconcile.ReconcileResult) *models.Report {
 			msg := fmt.Sprintf("ID %s: %s", r.ID, mismatch)
 			parameterMismatches = append(parameterMismatches, msg)
 		}
-
-		// Malformed items would have been filtered during loading
-		// For now, we don't have a way to detect malformed items in the new system
-		// This could be added to the adapter if needed
 	}
 
 	return &models.Report{

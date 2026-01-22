@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -63,6 +64,17 @@ func BuildCache(ctx context.Context, spec *Spec, db *gorm.DB, client storage.Cli
 	)
 
 	// Build indices concurrently
+	// But first, verify storage is reachable to avoid hanging on retries.
+	{
+		liveCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		if exists, err := client.BucketExists(liveCtx, bucket); err != nil {
+			return nil, fmt.Errorf("storage check failed (unreachable?): %w", err)
+		} else if !exists {
+			return nil, fmt.Errorf("storage bucket %s does not exist", bucket)
+		}
+	}
+
 	wg.Add(3)
 
 	// Build DB index

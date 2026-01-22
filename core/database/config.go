@@ -12,4 +12,6 @@ type Config struct {
 	Password string `mapstructure:"password" default:""`
 	// Name is the database name.
 	Name string `mapstructure:"name" default:"emulator"`
+	// TimeoutSeconds is the connection timeout in seconds.
+	TimeoutSeconds int `mapstructure:"timeout_seconds" default:"30"`
 }

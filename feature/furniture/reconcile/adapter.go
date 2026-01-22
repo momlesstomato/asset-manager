@@ -27,6 +27,14 @@ type FurnitureAdapter struct {
 	mu            sync.RWMutex
 	// mappingReady signals when the classnameToID map is fully populated
 	mappingReady chan struct{}
+
+	// Mutation context (stored for purge/sync operations)
+	db            *gorm.DB
+	client        storage.Client
+	bucket        string
+	storagePrefix string
+	serverProfile string
+	gamedataObj   string
 }
 
 // NewAdapter creates a new furniture adapter.
@@ -36,6 +44,17 @@ func NewAdapter() *FurnitureAdapter {
 		idToClassname: make(map[string]string),
 		mappingReady:  make(chan struct{}),
 	}
+}
+
+// SetMutationContext stores database, storage client, and configuration for mutation operations.
+// This must be called before using DeleteDB, DeleteStorage, DeleteGamedata, or SyncDBFromGamedata.
+func (a *FurnitureAdapter) SetMutationContext(db *gorm.DB, client storage.Client, bucket, prefix, serverProfile, gamedataObj string) {
+	a.db = db
+	a.client = client
+	a.bucket = bucket
+	a.storagePrefix = prefix
+	a.serverProfile = serverProfile
+	a.gamedataObj = gamedataObj
 }
 
 // Name returns the unique name of this adapter.
@@ -272,7 +291,7 @@ func (a *FurnitureAdapter) LoadStorageSet(ctx context.Context, client storage.Cl
 		}
 
 		// Extract key from object
-		if key, ok := a.ExtractStorageKey(obj.Key, extension); ok {
+		if key, ok := a.ExtractStorageKey(obj.Key, prefix, extension); ok {
 			mu.Lock()
 			set[key] = struct{}{}
 			mu.Unlock()
@@ -297,34 +316,54 @@ func (a *FurnitureAdapter) ExtractGDKey(item reconcile.GDItem) string {
 
 // ExtractStorageKey parses a storage object key to extract the entity key.
 // For furniture, we map the filename (classname) to an ID using the gamedata mapping.
-func (a *FurnitureAdapter) ExtractStorageKey(objectKey, extension string) (key string, ok bool) {
+func (a *FurnitureAdapter) ExtractStorageKey(objectKey, prefix, extension string) (key string, ok bool) {
 	// Check if it has the right extension
 	if !strings.HasSuffix(objectKey, extension) {
 		return "", false
 	}
 
-	// Extract filename from path
-	parts := strings.Split(objectKey, "/")
-	if len(parts) == 0 {
+	// Check if it matches prefix
+	if !strings.HasPrefix(objectKey, prefix) {
 		return "", false
 	}
-	filename := parts[len(parts)-1]
 
-	// Remove extension - filename now matches classname from gamedata
-	filename = strings.TrimSuffix(filename, extension)
+	// Extract relative path (strip prefix and leading slash)
+	// objectKey: bundled/furniture/subdir/item.nitro
+	// prefix: bundled/furniture
+	// relPath: /subdir/item.nitro -> subdir/item.nitro
+	relPath := objectKey[len(prefix):]
+	relPath = strings.TrimPrefix(relPath, "/")
+
+	// Remove extension
+	// relPathNoExt: subdir/item
+	relPathNoExt := strings.TrimSuffix(relPath, extension)
+
+	// Get filename (basename) for mapping lookup
+	// filename: item
+	parts := strings.Split(relPathNoExt, "/")
+	filename := parts[len(parts)-1]
 
 	// Look up ID from classname mapping (filename IS the classname)
 	a.mu.RLock()
 	id, found := a.classnameToID[filename]
+	canonicalCN, hasReverse := a.idToClassname[id]
 	a.mu.RUnlock()
 
 	if found {
-		return id, true
+		// Only use the ID if we are the canonical classname for this ID
+		// AND we are not in a subdirectory (gamedata items are flat).
+		// If we are in a subdirectory, strictly speaking it's an orphan/misplaced file,
+		// so we should return it as an orphan key (relPathNoExt) so it gets deleted/moved.
+		isFlat := len(parts) == 1
+
+		if isFlat && hasReverse && canonicalCN == filename {
+			return id, true
+		}
 	}
 
-	// If not found in mapping, the item exists in storage but not in gamedata
-	// Return the classname as the key so it shows up as "unregistered"
-	return filename, true
+	// If not found in mapping, or is nested/shadowed, return the relative path as key.
+	// This ensures DeleteStorage can reconstruct the correct path: prefix + "/" + relPathNoExt + extension
+	return relPathNoExt, true
 }
 
 // ResolveName returns the display name for an entity.
@@ -565,4 +604,30 @@ func (a *FurnitureAdapter) parseDBRow(row map[string]any, profile ServerProfile)
 	}
 
 	return item
+}
+
+// Prepare validates and updates the database schema for compatibility.
+// It auto-expands name columns to VARCHAR(120) to prevent truncation errors.
+func (a *FurnitureAdapter) Prepare(ctx context.Context, db *gorm.DB) error {
+	profile := GetProfileByName(a.serverProfile)
+	tableName := profile.TableName
+
+	// Columns to ensure size for (public_name and item_name)
+	targetCols := []string{ColItemName, ColPublicName}
+
+	for _, colType := range targetCols {
+		colName := profile.Columns[colType]
+		if colName == "" {
+			continue
+		}
+
+		// Execute ALTER to resize column to 120 chars
+		// This is safe to run multiple times (idempotent for size increase)
+		query := fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s VARCHAR(120)", tableName, colName)
+
+		if err := db.Exec(query).Error; err != nil {
+			return fmt.Errorf("failed to prepare schema for %s.%s: %w", tableName, colName, err)
+		}
+	}
+	return nil
 }

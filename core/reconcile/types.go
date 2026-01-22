@@ -87,3 +87,85 @@ type DBItem any
 // GDItem represents a gamedata JSON entity with arbitrary fields.
 // Adapters define the concrete type and provide a way to extract this.
 type GDItem any
+
+// ActionType represents the type of mutation action.
+type ActionType string
+
+const (
+	// ActionDeleteDB deletes an entity from the database.
+	ActionDeleteDB ActionType = "delete_db"
+	// ActionDeleteGamedata deletes an entity from gamedata JSON.
+	ActionDeleteGamedata ActionType = "delete_gamedata"
+	// ActionDeleteStorage deletes an entity from storage.
+	ActionDeleteStorage ActionType = "delete_storage"
+	// ActionSyncDB syncs database fields from gamedata.
+	ActionSyncDB ActionType = "sync_db"
+)
+
+// Action represents a planned mutation operation.
+type Action struct {
+	// Type specifies the action to perform.
+	Type ActionType `json:"type"`
+
+	// Key is the entity identifier.
+	Key string `json:"key"`
+
+	// Reason explains why this action is needed.
+	Reason string `json:"reason"`
+
+	// GDItem stores the gamedata source for sync actions.
+	// Only populated for ActionSyncDB.
+	GDItem GDItem `json:"-"`
+}
+
+// ReconcilePlan contains reconciliation results and planned actions.
+type ReconcilePlan struct {
+	// Results contains per-entity reconciliation data.
+	Results []ReconcileResult `json:"results"`
+
+	// Actions contains planned mutation operations.
+	Actions []Action `json:"actions"`
+
+	// Summary provides aggregate counts.
+	Summary PlanSummary `json:"summary"`
+}
+
+// PlanSummary provides aggregate statistics for a reconcile plan.
+type PlanSummary struct {
+	// TotalItems is the total number of unique entities.
+	TotalItems int `json:"total_items"`
+
+	// MissingGamedata counts entities missing in gamedata.
+	MissingGamedata int `json:"missing_gamedata"`
+
+	// MissingStorage counts entities missing in storage.
+	MissingStorage int `json:"missing_storage"`
+
+	// MissingDB counts entities missing in database.
+	MissingDB int `json:"missing_db"`
+
+	// Mismatches counts entities with field discrepancies.
+	Mismatches int `json:"mismatches"`
+
+	// PurgeActions counts planned purge (delete) actions.
+	PurgeActions int `json:"purge_actions"`
+
+	// SyncActions counts planned sync (update) actions.
+	SyncActions int `json:"sync_actions"`
+}
+
+// ReconcileOptions controls reconcile behavior for purge/sync operations.
+type ReconcileOptions struct {
+	// DryRun prevents execution of any mutations if true.
+	DryRun bool
+
+	// DoPurge enables deletion of entities missing in any store.
+	DoPurge bool
+
+	// DoSync enables syncing of mismatched fields from gamedata to DB.
+	DoSync bool
+
+	// Confirmed indicates user has confirmed destructive actions.
+	// If false, mutations will not execute regardless of DryRun.
+	Confirmed bool
+}

@@ -14,4 +14,6 @@ type Config struct {
 	Bucket string `mapstructure:"bucket" default:"assets"`
 	// Region is the location of the bucket (e.g., us-east-1).
 	Region string `mapstructure:"region" default:""`
+	// TimeoutSeconds is the connection timeout in seconds.
+	TimeoutSeconds int `mapstructure:"timeout_seconds" default:"30"`
 }

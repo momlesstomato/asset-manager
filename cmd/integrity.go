@@ -98,21 +98,21 @@ var furnitureCmd = &cobra.Command{
 
 		logg.Info("Checking furniture assets (this might take a while)...", zap.String("server", cfg.Server.Emulator))
 
-		// Run reconciliation directly to get detailed results
-		results, err := furnitureIntegrity.ReconcileFurniture(ctx, client, cfg.Storage.Bucket, db, cfg.Server.Emulator)
+		// Use ReconcileFurnitureWithPlan to get accurate summary (unified counting)
+		plan, err := furnitureIntegrity.ReconcileFurnitureWithPlan(ctx, client, cfg.Storage.Bucket, db, cfg.Server.Emulator)
 		if err != nil {
 			return fmt.Errorf("furniture integrity check failed: %w", err)
 		}
+		results := plan.Results
+		summary := plan.Summary
 
-		// Calculate metrics and filter results
-		var (
-			gamedata_missing int
-			storage_missing  int
-			db_missing       int
-			mismatch         int
-		)
+		// Use summary counts from reconcile engine (unified counting with OR semantics)
+		gamedata_missing := summary.MissingGamedata
+		storage_missing := summary.MissingStorage
+		db_missing := summary.MissingDB
+		mismatch := summary.Mismatches
 
-		// Custom JSON output structure with inverted logic (missing instead of present)
+		// Custom JSON output structure
 		type FurnitureIssue struct {
 			ID              string   `json:"id"`
 			Name            string   `json:"name"`
@@ -125,38 +125,21 @@ var furnitureCmd = &cobra.Command{
 		// Filter results for JSON output - only include items with issues
 		var jsonIssues []FurnitureIssue
 		for _, r := range results {
-			hasIssue := false
-
-			if r.GamedataPresent && !r.DBPresent {
-				db_missing++
-				hasIssue = true
-			}
-			if r.GamedataPresent && !r.StoragePresent {
-				storage_missing++
-				hasIssue = true
-			}
-			if (r.DBPresent || r.StoragePresent) && !r.GamedataPresent {
-				// Skip items that are ONLY in storage (unregistered files)
-				if !r.DBPresent {
-					continue
-				}
-				gamedata_missing++
-				hasIssue = true
-			}
-			if len(r.Mismatch) > 0 {
-				mismatch++
-				hasIssue = true
-			}
-
-			// Only include in JSON if there's an issue
+			hasIssue := !r.GamedataPresent || !r.DBPresent || !r.StoragePresent || len(r.Mismatch) > 0
 			if hasIssue {
+				// Initialize empty mismatch array to prevent null in JSON
+				mismatchList := r.Mismatch
+				if mismatchList == nil {
+					mismatchList = []string{}
+				}
+
 				jsonIssues = append(jsonIssues, FurnitureIssue{
 					ID:              r.ID,
 					Name:            r.Name,
 					GamedataMissing: !r.GamedataPresent,
 					StorageMissing:  !r.StoragePresent,
 					DBMissing:       !r.DBPresent,
-					Mismatch:        r.Mismatch,
+					Mismatch:        mismatchList,
 				})
 			}
 		}
@@ -176,22 +159,8 @@ var furnitureCmd = &cobra.Command{
 
 		executionTime := time.Since(startTime)
 
-		// Always display metrics
-		fmt.Println("\n=== Furniture Integrity Metrics ===")
-		fmt.Printf("Total Items: %d\n", len(results))
-		fmt.Printf("Gamedata Missing: %d\n", gamedata_missing)
-		fmt.Printf("Storage Missing: %d\n", storage_missing)
-		fmt.Printf("DB Missing: %d\n", db_missing)
-		fmt.Printf("Mismatch: %d\n", mismatch)
-		fmt.Printf("Execution Time: %s\n", executionTime.String())
-		if jsonOutput {
-			fmt.Printf("\nDetailed JSON saved to: %s (%d items with issues)\n",
-				fmt.Sprintf("integrity_furniture_%d.json", time.Now().Unix()),
-				len(jsonIssues))
-		}
-
 		logg.Info("Furniture integrity check completed",
-			zap.Int("total", len(results)),
+			zap.Int("total", summary.TotalItems),
 			zap.Int("gamedata_missing", gamedata_missing),
 			zap.Int("storage_missing", storage_missing),
 			zap.Int("db_missing", db_missing),
