@@ -4,7 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"asset-manager/core/storage/mocks"
+
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 // TestReconcileWithPlan_PurgeActions tests that purge actions are planned correctly.
@@ -34,7 +37,10 @@ func TestReconcileWithPlan_PurgeActions(t *testing.T) {
 		DryRun:    false,
 	}
 
-	plan, err := ReconcileWithPlan(context.Background(), spec, nil, nil, "", opts)
+	mockClient := new(mocks.Client)
+	mockClient.On("BucketExists", mock.Anything, "").Return(true, nil)
+
+	plan, err := ReconcileWithPlan(context.Background(), spec, nil, mockClient, "", opts)
 	assert.NoError(t, err)
 	assert.NotNil(t, plan)
 
@@ -97,7 +103,10 @@ func TestReconcileWithPlan_SyncActions(t *testing.T) {
 		DryRun:    false,
 	}
 
-	plan, err := ReconcileWithPlan(context.Background(), spec, nil, nil, "", opts)
+	mockClient := new(mocks.Client)
+	mockClient.On("BucketExists", mock.Anything, "").Return(true, nil)
+
+	plan, err := ReconcileWithPlan(context.Background(), spec, nil, mockClient, "", opts)
 	assert.NoError(t, err)
 	assert.NotNil(t, plan)
 
@@ -148,7 +157,10 @@ func TestReconcileWithPlan_PurgePrecedence(t *testing.T) {
 		DryRun:    false,
 	}
 
-	plan, err := ReconcileWithPlan(context.Background(), spec, nil, nil, "", opts)
+	mockClient := new(mocks.Client)
+	mockClient.On("BucketExists", mock.Anything, "").Return(true, nil)
+
+	plan, err := ReconcileWithPlan(context.Background(), spec, nil, mockClient, "", opts)
 	assert.NoError(t, err)
 
 	// Should plan purge, NOT sync (purge takes precedence)

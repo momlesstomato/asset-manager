@@ -59,24 +59,28 @@ func TestFurnitureAdapter_ExtractKeys(t *testing.T) {
 		// Populate map first
 		adapter.mu.Lock()
 		adapter.classnameToID["chair"] = "200"
+		adapter.idToClassname["200"] = "chair"
 		adapter.mu.Unlock()
 
+		prefix := "bundled/furniture"
+		ext := ".nitro"
+
 		// Valid storage key
-		key, ok := adapter.ExtractStorageKey("bundled/furniture/chair.nitro", ".nitro")
+		key, ok := adapter.ExtractStorageKey("bundled/furniture/chair.nitro", prefix, ext)
 		assert.True(t, ok)
 		assert.Equal(t, "200", key, "Should map classname to ID")
 
 		// Unknown classname -> use classname as fallback
-		key, ok = adapter.ExtractStorageKey("bundled/furniture/unknown.nitro", ".nitro")
+		key, ok = adapter.ExtractStorageKey("bundled/furniture/unknown.nitro", prefix, ext)
 		assert.True(t, ok)
 		assert.Equal(t, "unknown", key, "Should fallback to classname if not found")
 
 		// Invalid extension
-		_, ok = adapter.ExtractStorageKey("bundled/furniture/chair.png", ".nitro")
+		_, ok = adapter.ExtractStorageKey("bundled/furniture/chair.png", prefix, ext)
 		assert.False(t, ok, "Should reject wrong extension")
 
 		// Nested path
-		key, ok = adapter.ExtractStorageKey("bundled/furniture/nested/chair.nitro", ".nitro")
+		key, ok = adapter.ExtractStorageKey("bundled/furniture/nested/chair.nitro", prefix, ext)
 		assert.True(t, ok)
 		assert.Equal(t, "200", key, "Should handle nested paths")
 	})
@@ -236,6 +240,7 @@ func TestFurnitureAdapter_LoadStorageSet(t *testing.T) {
 	// Populate mapping
 	adapter.mu.Lock()
 	adapter.classnameToID["chair"] = "100"
+	adapter.idToClassname["100"] = "chair"
 	adapter.mu.Unlock()
 
 	// Signal readiness immediately

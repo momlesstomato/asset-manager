@@ -38,9 +38,6 @@ func setupMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock) {
 }
 
 func TestCheckIntegrity(t *testing.T) {
-	mockClient := new(mocks.Client)
-	db, sqlMock := setupMockDB(t)
-
 	// Mock Data
 	furniDataJSON := `{
 		"roomitemtypes": {
@@ -54,12 +51,15 @@ func TestCheckIntegrity(t *testing.T) {
 	}`
 
 	t.Run("Success", func(t *testing.T) {
+		mockClient := new(mocks.Client)
+		db, sqlMock := setupMockDB(t)
+
 		// 1. Bucket Exists
-		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil).Once()
+		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(true, nil)
 
 		// 2. Gamedata Loading
 		mockClient.On("GetObject", mock.Anything, "test-bucket", "gamedata/FurnitureData.json", mock.Anything).
-			Return(io.NopCloser(strings.NewReader(furniDataJSON)), nil).Once()
+			Return(io.NopCloser(strings.NewReader(furniDataJSON)), nil)
 
 		// 3. Storage Listing
 		objCh := make(chan minio.ObjectInfo, 1)
@@ -82,7 +82,24 @@ func TestCheckIntegrity(t *testing.T) {
 	})
 
 	t.Run("BucketMissing", func(t *testing.T) {
+		mockClient := new(mocks.Client)
+		db, sqlMock := setupMockDB(t)
+
+		// Expect bucket check
 		mockClient.On("BucketExists", mock.Anything, "test-bucket").Return(false, nil).Once()
+
+		// Since CheckIntegrity calls ReconcileAll which starts LoadDBIndex in parallel,
+		// we MUST expect the DB query even if bucket check fails fast.
+		// Return empty rows to satisfy the query.
+		sqlMock.ExpectQuery("SELECT \\* FROM items_base").WillReturnRows(sqlmock.NewRows([]string{}))
+
+		// LoadStorageSet might run concurrently and call ListObjects.
+		// Use Maybe() because raciness determines if it gets called before context cancel.
+		emptyCh := make(chan minio.ObjectInfo)
+		close(emptyCh)
+		mockClient.On("ListObjects", mock.Anything, "test-bucket", mock.Anything).
+			Return((<-chan minio.ObjectInfo)(emptyCh)).Maybe()
+
 		report, err := CheckIntegrity(context.Background(), mockClient, "test-bucket", db, "arcturus")
 		assert.Error(t, err)
 		assert.Nil(t, report)

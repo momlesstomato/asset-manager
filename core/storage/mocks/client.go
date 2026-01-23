@@ -45,3 +45,18 @@ func (m *Client) ListObjects(ctx context.Context, bucketName string, opts minio.
 	close(ch)
 	return ch
 }
+
+func (m *Client) RemoveObject(ctx context.Context, bucketName, objectName string, opts minio.RemoveObjectOptions) error {
+	args := m.Called(ctx, bucketName, objectName, opts)
+	return args.Error(0)
+}
+
+func (m *Client) RemoveObjects(ctx context.Context, bucketName string, objectsCh <-chan minio.ObjectInfo, opts minio.RemoveObjectsOptions) <-chan minio.RemoveObjectError {
+	args := m.Called(ctx, bucketName, objectsCh, opts)
+	if ch, ok := args.Get(0).(<-chan minio.RemoveObjectError); ok {
+		return ch
+	}
+	ch := make(chan minio.RemoveObjectError)
+	close(ch)
+	return ch
+}

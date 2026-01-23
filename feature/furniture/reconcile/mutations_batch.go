@@ -128,7 +128,11 @@ func (a *FurnitureAdapter) SyncDBBatch(ctx context.Context, actions []reconcile.
 
 	// Configuration for worker pool
 	// 50 workers allows high throughput without overwhelming DB connection pool (max 100)
-	const numWorkers = 50
+	// Variable for testing purposes
+	var numWorkers = 50
+	if a.batchConcurrency > 0 {
+		numWorkers = a.batchConcurrency
+	}
 
 	// Create channels
 	actionsCh := make(chan reconcile.Action, len(actions))

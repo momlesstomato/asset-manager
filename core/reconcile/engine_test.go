@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"asset-manager/core/storage"
+	"asset-manager/core/storage/mocks"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"gorm.io/gorm"
 )
 
@@ -82,7 +84,13 @@ func TestBuildCache_ErrorHandling(t *testing.T) {
 				CacheTTL: 5 * time.Minute,
 			}
 
-			_, err := BuildCache(context.Background(), spec, nil, nil, "")
+			// Mock client for bucket check
+			mockClient := new(mocks.Client)
+			// Expect BucketExists check (called by BuildCache for liveness)
+			// Return true to allow proceeding to adapter load
+			mockClient.On("BucketExists", mock.Anything, "").Return(true, nil)
+
+			_, err := BuildCache(context.Background(), spec, nil, mockClient, "")
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expectErr)
 		})
@@ -118,8 +126,12 @@ func (m *mockAdapter) ExtractGDKey(item GDItem) string {
 	return item.(string)
 }
 
-func (m *mockAdapter) ExtractStorageKey(objectKey, extension string) (string, bool) {
+func (m *mockAdapter) ExtractStorageKey(objectKey, prefix, extension string) (string, bool) {
 	return objectKey, true
+}
+
+func (m *mockAdapter) Prepare(ctx context.Context, db *gorm.DB) error {
+	return nil
 }
 
 func (m *mockAdapter) ResolveName(dbItem DBItem, gdItem GDItem) string {
@@ -189,7 +201,10 @@ func TestReconcileAll_UnionKeys(t *testing.T) {
 		CacheTTL: 0, // No caching for this test
 	}
 
-	results, err := ReconcileAll(context.Background(), spec, nil, nil, "")
+	mockClient := new(mocks.Client)
+	mockClient.On("BucketExists", mock.Anything, "").Return(true, nil)
+
+	results, err := ReconcileAll(context.Background(), spec, nil, mockClient, "")
 	assert.NoError(t, err)
 	assert.Len(t, results, 4)
 
@@ -227,7 +242,10 @@ func TestReconcileAll_PresenceFlags(t *testing.T) {
 		CacheTTL: 0,
 	}
 
-	results, err := ReconcileAll(context.Background(), spec, nil, nil, "")
+	mockClient := new(mocks.Client)
+	mockClient.On("BucketExists", mock.Anything, "").Return(true, nil)
+
+	results, err := ReconcileAll(context.Background(), spec, nil, mockClient, "")
 	assert.NoError(t, err)
 
 	// Build a map for easy lookup
@@ -277,7 +295,10 @@ func TestReconcileAll_OrphanDetection(t *testing.T) {
 		CacheTTL: 0,
 	}
 
-	results, err := ReconcileAll(context.Background(), spec, nil, nil, "")
+	mockClient := new(mocks.Client)
+	mockClient.On("BucketExists", mock.Anything, "").Return(true, nil)
+
+	results, err := ReconcileAll(context.Background(), spec, nil, mockClient, "")
 	assert.NoError(t, err)
 	assert.Len(t, results, 3)
 
@@ -329,7 +350,10 @@ func TestReconcileAll_MismatchDetection(t *testing.T) {
 		CacheTTL: 0,
 	}
 
-	results, err := ReconcileAll(context.Background(), spec, nil, nil, "")
+	mockClient := new(mocks.Client)
+	mockClient.On("BucketExists", mock.Anything, "").Return(true, nil)
+
+	results, err := ReconcileAll(context.Background(), spec, nil, mockClient, "")
 	assert.NoError(t, err)
 
 	resultMap := make(map[string]ReconcileResult)
@@ -366,14 +390,17 @@ func TestCache_Hit(t *testing.T) {
 		CacheTTL: 5 * time.Minute,
 	}
 
+	mockClient := new(mocks.Client)
+	mockClient.On("BucketExists", mock.Anything, "").Return(true, nil)
+
 	// First call - should build cache
-	cache1, err := GetOrBuildCache(context.Background(), spec, nil, nil, "")
+	cache1, err := GetOrBuildCache(context.Background(), spec, nil, mockClient, "")
 	assert.NoError(t, err)
 	assert.NotNil(t, cache1)
 	assert.Equal(t, 1, loadCount)
 
 	// Second call - should use cached
-	cache2, err := GetOrBuildCache(context.Background(), spec, nil, nil, "")
+	cache2, err := GetOrBuildCache(context.Background(), spec, nil, mockClient, "")
 	assert.NoError(t, err)
 	assert.NotNil(t, cache2)
 	assert.Equal(t, 1, loadCount) // Still 1, not called again
@@ -402,8 +429,12 @@ func TestCache_Expiration(t *testing.T) {
 		CacheTTL: 10 * time.Millisecond, // Very short TTL
 	}
 
+	mockClient := new(mocks.Client)
+	// Expect bucket check twice because cache expires and rebuilds
+	mockClient.On("BucketExists", mock.Anything, "").Return(true, nil)
+
 	// First call
-	_, err := GetOrBuildCache(context.Background(), spec, nil, nil, "")
+	_, err := GetOrBuildCache(context.Background(), spec, nil, mockClient, "")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, loadCount)
 
@@ -411,7 +442,7 @@ func TestCache_Expiration(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 
 	// Second call - should rebuild
-	_, err = GetOrBuildCache(context.Background(), spec, nil, nil, "")
+	_, err = GetOrBuildCache(context.Background(), spec, nil, mockClient, "")
 	assert.NoError(t, err)
 	assert.Equal(t, 2, loadCount) // Called again
 
@@ -441,8 +472,11 @@ func TestReconcileOne_WithCache(t *testing.T) {
 		CacheTTL: 5 * time.Minute,
 	}
 
+	mockClient := new(mocks.Client)
+	mockClient.On("BucketExists", mock.Anything, "").Return(true, nil)
+
 	query := Query{ID: "item1"}
-	result, err := ReconcileOne(context.Background(), spec, nil, nil, "", query)
+	result, err := ReconcileOne(context.Background(), spec, nil, mockClient, "", query)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, "item1", result.ID)
@@ -469,8 +503,11 @@ func TestReconcileOne_NotFound(t *testing.T) {
 		CacheTTL: 5 * time.Minute,
 	}
 
+	mockClient := new(mocks.Client)
+	mockClient.On("BucketExists", mock.Anything, "").Return(true, nil)
+
 	query := Query{ID: "nonexistent"}
-	result, err := ReconcileOne(context.Background(), spec, nil, nil, "", query)
+	result, err := ReconcileOne(context.Background(), spec, nil, mockClient, "", query)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.False(t, result.DBPresent)

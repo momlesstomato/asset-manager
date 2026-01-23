@@ -35,6 +35,9 @@ type FurnitureAdapter struct {
 	storagePrefix string
 	serverProfile string
 	gamedataObj   string
+
+	// batchConcurrency allows overriding worker count (default 50)
+	batchConcurrency int
 }
 
 // NewAdapter creates a new furniture adapter.
@@ -55,6 +58,17 @@ func (a *FurnitureAdapter) SetMutationContext(db *gorm.DB, client storage.Client
 	a.storagePrefix = prefix
 	a.serverProfile = serverProfile
 	a.gamedataObj = gamedataObj
+
+	// Auto-detect SQLite and force sequential execution to avoid locking/deadlocks
+	if db != nil && db.Dialector.Name() == "sqlite" {
+		a.batchConcurrency = 1
+	}
+}
+
+// SetBatchConcurrency sets the number of concurrent workers for batch operations.
+// Set to 1 for sequential execution (useful for SQLite tests).
+func (a *FurnitureAdapter) SetBatchConcurrency(n int) {
+	a.batchConcurrency = n
 }
 
 // Name returns the unique name of this adapter.
@@ -350,13 +364,11 @@ func (a *FurnitureAdapter) ExtractStorageKey(objectKey, prefix, extension string
 	a.mu.RUnlock()
 
 	if found {
-		// Only use the ID if we are the canonical classname for this ID
-		// AND we are not in a subdirectory (gamedata items are flat).
 		// If we are in a subdirectory, strictly speaking it's an orphan/misplaced file,
-		// so we should return it as an orphan key (relPathNoExt) so it gets deleted/moved.
-		isFlat := len(parts) == 1
+		// but we still return the ID so the engine knows we HAVE the item (just in wrong place).
+		// This enables the engine to plan a Move action instead of Delete+Download.
 
-		if isFlat && hasReverse && canonicalCN == filename {
+		if hasReverse && canonicalCN == filename {
 			return id, true
 		}
 	}
